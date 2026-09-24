@@ -1,0 +1,67 @@
+# invst — Main configuration
+
+project:
+  name: invst
+  version: 0.1.0
+
+database:
+  path: db/invst.db
+  wal_mode: true
+
+data:
+  raw_dir: data/raw
+  interim_dir: data/interim
+  processed_dir: data/processed
+
+universe:
+  index: nifty_500
+  benchmark: nifty_500_tri
+
+rebalance:
+  cadence: quarterly
+  # Approximate quarterly dates (last trading day of quarter)
+  months: [3, 6, 9, 12]
+
+constraints:
+  max_single_stock_weight: 0.25
+  max_sector_weight: 0.40
+  max_holdings: 8
+  top_n_composite: 50
+  top_n_shortlist: 15
+  sector_cap_in_top50: 0.35
+
+screening:
+  min_liquidity_cr: 5.0        # 30-day median traded value >= 5 crore
+  min_market_cap_cr: 1000.0    # Market cap >= 1000 crore
+  min_listing_years: 3
+  max_promoter_holding_pct: 75.0
+  min_quarters_available: 10   # out of last 12
+  min_price: 10.0              # no penny stocks
+
+backtest:
+  start_date: "2016-01-01"
+  end_date: "2026-09-30"
+  trade_execution: next_day_open
+  buy_cost_bps: 30
+  sell_cost_bps: 20
+  slippage_bps: 5
+
+ml:
+  classifier_threshold: 0.55
+  walk_forward_train_years: 5
+  sentiment_cap_points: 10
+
+risk_free_rate:
+  source: rbi_364d_tbill   # or "manual"
+  manual_rate: 0.065       # 6.5% fallback
+
+logging:
+  level: INFO
+  format: "%(asctime)s | %(name)s | %(levelname)s | %(message)s"
+  file: logs/invst.log
+
+auth:
+  enabled: true
+  password: "arth"  # Overridable via ARTH_IQ_PASSWORD environment variable
+  session_expiry_hours: 72
+

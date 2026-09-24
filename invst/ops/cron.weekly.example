@@ -1,0 +1,2 @@
+# Weekly Point-in-Time Integrity Audit (Sunday at 02:00 AM IST)
+0 2 * * 0 cd /path/to/invst && python -m invst.cli monitor >> /var/log/invst_pit_audit.log 2>&1

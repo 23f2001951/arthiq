@@ -1,0 +1,5 @@
+# Daily cron jobs for invst
+# Ingest Bhavcopy at 03:30 AM IST (Monday to Friday)
+30 3 * * 1-5 cd /path/to/invst && python -m invst.cli ingest >> /var/log/invst_ingest.log 2>&1
+# Daily Data Quality Monitor at 04:00 AM IST
+0 4 * * 1-5 cd /path/to/invst && python -m invst.cli monitor >> /var/log/invst_monitor.log 2>&1

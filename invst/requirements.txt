@@ -1,0 +1,17 @@
+pandas>=2.1
+numpy>=1.26
+scipy>=1.12
+yfinance>=0.2.31
+requests>=2.31
+pyyaml>=6.0
+jinja2>=3.1
+streamlit>=1.30
+plotly>=5.18
+weasyprint>=60
+lightgbm>=4.1
+transformers>=4.36
+torch>=2.1
+scikit-learn>=1.4
+fastapi>=0.110.0
+uvicorn>=0.28.0
+

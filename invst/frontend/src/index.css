@@ -1,0 +1,161 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: #040508;
+  background-image: 
+    radial-gradient(at 50% 0%, rgba(37, 99, 235, 0.12) 0px, transparent 60%),
+    radial-gradient(at 100% 30%, rgba(14, 165, 233, 0.06) 0px, transparent 50%),
+    radial-gradient(at 0% 60%, rgba(30, 58, 138, 0.08) 0px, transparent 50%),
+    radial-gradient(at 50% 100%, rgba(2, 132, 199, 0.05) 0px, transparent 60%);
+  background-attachment: fixed;
+  color: #f1f5f9;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+  overflow-x: hidden;
+}
+
+/* Tabular numbers for clean financial metric alignment */
+.font-mono, .tabular-nums {
+  font-feature-settings: "tnum" 1;
+}
+
+/* Deep Obsidian Glassmorphic Cards with Winsor Blue Nuances */
+.glass-card {
+  background: #090b11;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 1.25rem;
+  box-shadow: 0 14px 34px -10px rgba(0, 0, 0, 0.8);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card:hover {
+  border-color: rgba(37, 99, 235, 0.35);
+  box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.9), 0 0 25px -4px rgba(37, 99, 235, 0.18);
+}
+
+.glass-card-glow-winsor {
+  background: #0b0e17;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(37, 99, 235, 0.4);
+  border-radius: 1.25rem;
+  box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.8), 0 0 30px -5px rgba(37, 99, 235, 0.22);
+}
+
+/* Spotlight beam highlight behind key chart pillars */
+.spotlight-beam {
+  background: radial-gradient(ellipse at top, rgba(37, 99, 235, 0.35) 0%, rgba(37, 99, 235, 0.08) 50%, transparent 80%);
+}
+
+/* Glowing Beacon Light */
+.beacon-dot {
+  position: relative;
+}
+
+.beacon-dot::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  right: -4px;
+  bottom: -4px;
+  border-radius: 9999px;
+  background: inherit;
+  opacity: 0.6;
+  animation: beacon-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes beacon-ping {
+  75%, 100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+/* Custom modern scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #040508;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #151a28;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #2563eb;
+}
+
+/* Ticker tape pause on hover */
+.ticker-tape-container:hover .animate-marquee {
+  animation-play-state: paused;
+}
+
+/* Halftone Dot-Grid Pattern (from Artbox cards) */
+.bg-dot-grid {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1.2px, transparent 1.2px);
+  background-size: 18px 18px;
+}
+
+/* Concentric Geometric Rings Watermark (from Artbox "How it Works" cards) */
+.bg-concentric-rings {
+  background-image: radial-gradient(circle at 100% 0%, transparent 20%, rgba(255, 255, 255, 0.03) 21%, transparent 22%, transparent 40%, rgba(255, 255, 255, 0.03) 41%, transparent 42%, transparent 60%, rgba(255, 255, 255, 0.03) 61%, transparent 62%, transparent 80%, rgba(255, 255, 255, 0.03) 81%, transparent 82%);
+}
+
+/* Ambient Corner Mesh Glows */
+.mesh-glow-amber {
+  background: radial-gradient(circle at 80% 0%, rgba(245, 158, 11, 0.15) 0%, transparent 60%);
+}
+
+.mesh-glow-gold {
+  background: radial-gradient(circle at 80% 0%, rgba(234, 179, 8, 0.16) 0%, transparent 60%);
+}
+
+.mesh-glow-cyan {
+  background: radial-gradient(circle at 80% 0%, rgba(56, 189, 248, 0.16) 0%, transparent 60%);
+}
+
+.mesh-glow-purple {
+  background: radial-gradient(circle at 80% 0%, rgba(147, 51, 234, 0.18) 0%, transparent 60%);
+}
+
+.mesh-glow-emerald {
+  background: radial-gradient(circle at 80% 0%, rgba(16, 185, 129, 0.16) 0%, transparent 60%);
+}
+
+/* Artbox-style amber pill button glow */
+.btn-glow-amber {
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  box-shadow: 0 0 20px -3px rgba(245, 158, 11, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+.btn-glow-amber:hover {
+  border-color: rgba(245, 158, 11, 0.7);
+  box-shadow: 0 0 25px 0px rgba(245, 158, 11, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+
+.animate-shake {
+  animation: shake 0.4s ease-in-out;
+}
+

@@ -1,0 +1,129 @@
+# invst — NSE sector classification
+# Maps sector codes to display names and sub-sectors
+
+sectors:
+  financial_services:
+    display_name: Financial Services
+    sub_sectors:
+      - Banks - Private
+      - Banks - Public
+      - Non-Banking Financial Companies (NBFCs)
+      - Insurance
+      - Asset Management
+      - Stock Exchanges & Depositories
+      - Housing Finance
+
+  information_technology:
+    display_name: Information Technology
+    sub_sectors:
+      - IT Services & Consulting
+      - IT Products
+      - BPO / KPO
+
+  oil_gas_consumable_fuels:
+    display_name: Oil, Gas & Consumable Fuels
+    sub_sectors:
+      - Oil Exploration & Production
+      - Refineries
+      - Gas Distribution
+      - LPG / CNG / PNG
+
+  fast_moving_consumer_goods:
+    display_name: Fast Moving Consumer Goods
+    sub_sectors:
+      - Personal Care
+      - Food Products
+      - Household Products
+      - Tobacco
+
+  automobile_and_auto_components:
+    display_name: Automobile and Auto Components
+    sub_sectors:
+      - Passenger Vehicles
+      - Commercial Vehicles
+      - Two Wheelers
+      - Auto Components
+      - Tyres
+
+  healthcare:
+    display_name: Healthcare
+    sub_sectors:
+      - Pharmaceuticals
+      - Hospitals & Diagnostics
+      - Medical Devices
+      - API / CRAMS
+
+  metals_mining:
+    display_name: Metals & Mining
+    sub_sectors:
+      - Steel
+      - Non-Ferrous Metals
+      - Mining
+
+  construction_materials:
+    display_name: Construction Materials
+    sub_sectors:
+      - Cement
+      - Building Materials
+      - Ceramics & Sanitaryware
+
+  capital_goods:
+    display_name: Capital Goods
+    sub_sectors:
+      - Electrical Equipment
+      - Heavy Engineering
+      - Defence
+      - Industrial Machinery
+
+  power:
+    display_name: Power
+    sub_sectors:
+      - Power Generation
+      - Power Transmission & Distribution
+      - Renewable Energy
+
+  consumer_durables:
+    display_name: Consumer Durables
+    sub_sectors:
+      - Electronics
+      - Home Appliances
+      - Jewellery & Watches
+
+  telecommunication:
+    display_name: Telecommunication
+    sub_sectors:
+      - Telecom Services
+      - Telecom Infrastructure
+
+  chemicals:
+    display_name: Chemicals
+    sub_sectors:
+      - Specialty Chemicals
+      - Commodity Chemicals
+      - Agrochemicals & Fertilizers
+
+  realty:
+    display_name: Realty
+    sub_sectors:
+      - Residential
+      - Commercial
+      - Industrial / Warehousing
+
+  consumer_services:
+    display_name: Consumer Services
+    sub_sectors:
+      - Hotels & Restaurants
+      - Tourism & Travel
+      - Education
+      - Media & Entertainment
+
+  textiles:
+    display_name: Textiles
+    sub_sectors:
+      - Textile Manufacturing
+      - Apparel & Fashion
+
+  diversified:
+    display_name: Diversified
+    sub_sectors:
+      - Conglomerates

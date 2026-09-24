@@ -1,0 +1,46 @@
+# invst — Scoring weights configuration
+# All weights within a stage must sum to 1.0
+
+# Stage 1: Quality scoring (§2.2)
+quality:
+  roe_5yr_avg: 0.25
+  roce_5yr_avg: 0.25
+  debt_equity: 0.15
+  interest_coverage: 0.10
+  earnings_cagr_5yr: 0.15
+  ocf_to_net_profit: 0.10
+
+# Stage 2: Valuation scoring (§2.3)
+valuation:
+  pe_ttm: 0.30
+  pb: 0.20
+  ev_ebitda: 0.30
+  dividend_yield: 0.10
+  peg: 0.10
+
+# Stage 3: Risk scoring (§2.4)
+# Risk is subtractive — higher risk loses points
+risk:
+  annualised_vol_252d: 0.25
+  beta_nifty500_2yr: 0.20
+  max_drawdown_3yr: 0.25
+  downside_deviation_1yr: 0.15
+  altman_z_score: 0.15
+
+# Stage 4: Sentiment / Momentum overlay (§2.5)
+# These are additive point caps, not fractional weights
+sentiment_overlay:
+  price_momentum_6_12_1:
+    max_points: 5
+  news_sentiment_90d:
+    max_points: 5
+  insider_promoter_trend:
+    max_points: 3
+  total_cap: 10   # max total overlay adjustment
+
+# Composite stage weights (how much each stage contributes to final score)
+composite:
+  quality: 0.35
+  valuation: 0.30
+  risk: 0.20
+  sentiment_overlay: 0.15
