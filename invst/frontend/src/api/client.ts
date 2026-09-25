@@ -12,7 +12,8 @@ import {
   ModelTrainResponse,
 } from '../types/api';
 
-const BASE_URL = '/api';
+const API_HOST = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/+$/, '') || '';
+const BASE_URL = `${API_HOST}/api`;
 const TOKEN_KEY = 'arth_iq_session_token';
 
 export function getAuthToken(): string | null {

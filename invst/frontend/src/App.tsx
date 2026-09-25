@@ -6,14 +6,42 @@ import { MarketTickerTape } from './components/MarketTickerTape';
 import { StockIdeasSubNav, StockIdeasSubTab } from './components/StockIdeasSubNav';
 import { ModernArtboxFooter } from './components/ModernArtboxFooter';
 import { AuthGate } from './components/AuthGate';
-import { DashboardView } from './views/DashboardView';
-import { RecommendationsView } from './views/RecommendationsView';
-import { StockAnalyzerView } from './views/StockAnalyzerView';
-import { PortfolioHealthView } from './views/PortfolioHealthView';
-import { TargetListView } from './views/TargetListView';
-import { BacktestView } from './views/BacktestView';
-import { HealthView } from './views/HealthView';
 import { fetchHealth, verifyAuth, logout } from './api/client';
+
+// Lazy-loaded views for optimal SPA performance and code splitting
+const DashboardView = React.lazy(() =>
+  import('./views/DashboardView').then((m) => ({ default: m.DashboardView }))
+);
+const RecommendationsView = React.lazy(() =>
+  import('./views/RecommendationsView').then((m) => ({ default: m.RecommendationsView }))
+);
+const StockAnalyzerView = React.lazy(() =>
+  import('./views/StockAnalyzerView').then((m) => ({ default: m.StockAnalyzerView }))
+);
+const PortfolioHealthView = React.lazy(() =>
+  import('./views/PortfolioHealthView').then((m) => ({ default: m.PortfolioHealthView }))
+);
+const TargetListView = React.lazy(() =>
+  import('./views/TargetListView').then((m) => ({ default: m.TargetListView }))
+);
+const BacktestView = React.lazy(() =>
+  import('./views/BacktestView').then((m) => ({ default: m.BacktestView }))
+);
+const HealthView = React.lazy(() =>
+  import('./views/HealthView').then((m) => ({ default: m.HealthView }))
+);
+
+const ViewLoadingSkeleton: React.FC = () => (
+  <div className="space-y-6 animate-pulse py-4">
+    <div className="h-28 bg-slate-900/60 rounded-2xl border border-slate-800/80"></div>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="h-40 bg-slate-900/60 rounded-2xl border border-slate-800/80"></div>
+      <div className="h-40 bg-slate-900/60 rounded-2xl border border-slate-800/80"></div>
+      <div className="h-40 bg-slate-900/60 rounded-2xl border border-slate-800/80"></div>
+    </div>
+    <div className="h-80 bg-slate-900/60 rounded-2xl border border-slate-800/80"></div>
+  </div>
+);
 
 export const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -143,37 +171,39 @@ export const App: React.FC = () => {
 
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
           <div key={currentTab} className="animate-fade-in-up space-y-8">
-            {currentTab === 'dashboard' && (
-              <DashboardView
-                onNavigateTab={(tab, subTab) => {
-                  setCurrentTab(tab as NavTab);
-                  if (subTab) setStockIdeasSubTab(subTab as StockIdeasSubTab);
-                }}
-              />
-            )}
-            {currentTab === 'recommendations' && (
-              <RecommendationsView
-                activeSubTab={stockIdeasSubTab}
-                onSelectSubTab={setStockIdeasSubTab}
-              />
-            )}
-            {currentTab === 'analyzer' && (
-              <StockAnalyzerView
-                initialSymbol={analyzerSymbol}
-                onNavigateTab={(tab) => setCurrentTab(tab as NavTab)}
-              />
-            )}
-            {currentTab === 'portfolio' && <PortfolioHealthView />}
-            {currentTab === 'targetlist' && (
-              <TargetListView
-                onNavigateTab={(tab, sym) => {
-                  if (sym) setAnalyzerSymbol(sym);
-                  setCurrentTab(tab as NavTab);
-                }}
-              />
-            )}
-            {currentTab === 'backtest' && <BacktestView />}
-            {currentTab === 'health' && <HealthView />}
+            <React.Suspense fallback={<ViewLoadingSkeleton />}>
+              {currentTab === 'dashboard' && (
+                <DashboardView
+                  onNavigateTab={(tab, subTab) => {
+                    setCurrentTab(tab as NavTab);
+                    if (subTab) setStockIdeasSubTab(subTab as StockIdeasSubTab);
+                  }}
+                />
+              )}
+              {currentTab === 'recommendations' && (
+                <RecommendationsView
+                  activeSubTab={stockIdeasSubTab}
+                  onSelectSubTab={setStockIdeasSubTab}
+                />
+              )}
+              {currentTab === 'analyzer' && (
+                <StockAnalyzerView
+                  initialSymbol={analyzerSymbol}
+                  onNavigateTab={(tab) => setCurrentTab(tab as NavTab)}
+                />
+              )}
+              {currentTab === 'portfolio' && <PortfolioHealthView />}
+              {currentTab === 'targetlist' && (
+                <TargetListView
+                  onNavigateTab={(tab, sym) => {
+                    if (sym) setAnalyzerSymbol(sym);
+                    setCurrentTab(tab as NavTab);
+                  }}
+                />
+              )}
+              {currentTab === 'backtest' && <BacktestView />}
+              {currentTab === 'health' && <HealthView />}
+            </React.Suspense>
           </div>
 
           {/* Modern Artbox-Style Footer Card */}

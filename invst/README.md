@@ -76,56 +76,32 @@ make run-app
 
 ```
 invst/
-├── .env.example              # Environment variables template
-├── .gitignore                # Git ignore patterns
-├── Makefile                  # Development automation commands
-├── pyproject.toml            # Build metadata, dependencies & tool configs
-├── requirements.txt          # Core dependencies
-├── requirements-dev.txt      # Development & test tooling
-├── README.md                 # Project documentation
+├── docker-compose.yml          # Container orchestration (Frontend + Backend)
+├── Makefile                    # Root orchestration commands
+├── README.md                   # Project documentation
 │
-├── app/                      # Streamlit interactive UI
-│   ├── streamlit_app.py      # Main dashboard entrypoint
-│   ├── pages/                # Multi-page views (Dashboard, Recommendations, Backtest, etc.)
-│   └── components/           # Reusable UI widgets and chart helpers
+├── frontend/                   # React 18 + Vite 6 + Tailwind SPA
+│   ├── Dockerfile              # Multi-stage Nginx container
+│   ├── nginx.conf              # SPA routing fallback & reverse-proxy config
+│   ├── package.json
+│   ├── vite.config.ts
+│   └── src/                    # Components, views, API client
 │
-├── config/                   # Configuration files
-│   ├── settings.yaml         # System thresholds, paths, caps
-│   ├── scoring_weights.yaml  # Factor scoring weights
-│   └── sectors.yaml          # NSE sector mappings
-│
-├── data/                     # Local data storage (gitignored)
-│   ├── raw/                  # Downloaded bhavcopies, filings, RSS dumps
-│   ├── interim/              # Parsed intermediate datasets
-│   └── processed/            # Feature matrices and cached tables
-│
-├── db/                       # Database layer
-│   ├── invst.db              # Local SQLite database (gitignored)
-│   ├── migrate.py            # Migration runner
-│   ├── migrations/           # SQL migration scripts
-│   └── seed/                 # Static data (Nifty 500 historical constituents, sectors)
-│
-├── docs/                     # Documentation and architecture diagrams
-├── notebooks/                # Jupyter research and EDA notebooks
-├── ops/                      # Operational runbooks and maintenance scripts
-│
-├── src/                      # Source package
-│   └── invst/
-│       ├── cli.py            # CLI entry point (`invst`)
-│       ├── config.py         # Configuration loader
-│       ├── data_access.py    # Point-in-time data access layer
-│       ├── logging_utils.py  # Structured logging utilities
-│       ├── ingestion/        # Bhavcopy, yfinance, filings, macro, and news scrapers
-│       ├── scoring/          # Stage 0-4 screening, scoring, and composite ranking
-│       ├── optimization/     # Mean-variance optimization with portfolio caps
-│       ├── backtest/         # Walk-forward backtesting engine, execution & metrics
-│       ├── ml/               # Sentiment models (FinBERT), classifiers & calibration
-│       ├── reporting/        # Report generator & plain-English rationale builder
-│       └── monitoring/       # Data quality, PIT audits, and divergence monitors
-│
-└── tests/                    # Automated test suite (pytest)
-    ├── conftest.py           # Test fixtures and in-memory SQLite setup
-    └── test_*.py             # Unit and integration tests
+├── backend/                    # Python Quant Engine & FastAPI service
+│   ├── Dockerfile              # Python 3.11-slim container
+│   ├── Makefile                # Backend developer commands
+│   ├── pyproject.toml          # Build metadata & dependencies
+│   ├── requirements.txt        # Production dependencies
+│   ├── requirements-dev.txt    # Dev & test tooling
+│   ├── app/                    # Streamlit interactive UI (legacy)
+│   ├── config/                 # settings.yaml, scoring_weights.yaml, sectors.yaml
+│   ├── data/                   # Raw, interim, processed data storage (gitignored)
+│   ├── db/                     # SQLite migrations, seed data & migrate.py
+│   ├── docs/                   # Architecture, specs & decision logs
+│   ├── notebooks/              # Jupyter research and EDA notebooks
+│   ├── ops/                    # Operational runbooks and cron scripts
+│   ├── src/invst/              # Reusable Python package (API, scoring, ML, optimization)
+│   └── tests/                  # Automated pytest test suite
 ```
 
 ---

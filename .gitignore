@@ -41,12 +41,18 @@ data/processed/*
 invst/data/raw/*
 invst/data/interim/*
 invst/data/processed/*
+invst/backend/data/raw/*
+invst/backend/data/interim/*
+invst/backend/data/processed/*
 !data/raw/.gitkeep
 !data/interim/.gitkeep
 !data/processed/.gitkeep
 !invst/data/raw/.gitkeep
 !invst/data/interim/.gitkeep
 !invst/data/processed/.gitkeep
+!invst/backend/data/raw/.gitkeep
+!invst/backend/data/interim/.gitkeep
+!invst/backend/data/processed/.gitkeep
 
 # Logs and generated reports
 logs/
@@ -54,8 +60,11 @@ logs/
 reports/*.pdf
 reports/*.html
 invst/logs/
+invst/backend/logs/
 invst/reports/*.pdf
 invst/reports/*.html
+invst/backend/reports/*.pdf
+invst/backend/reports/*.html
 
 # Frontend build & dependencies
 node_modules/

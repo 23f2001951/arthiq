@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: arthiq-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - ARTH_ENV=production
+      - ARTH_DB_PATH=/app/data/invst.db
+      - ARTH_API_KEY=${ARTH_API_KEY:-arth_default_secret}
+    volumes:
+      - backend-data:/app/data
+      - backend-db:/app/db
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: arthiq-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  backend-data:
+  backend-db:

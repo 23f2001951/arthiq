@@ -9,13 +9,14 @@ ArthIQ is an institutional-grade quantitative investment decision-support engine
 ## Repository Structure
 
 - [`PROJECT_PLAN.md`](./PROJECT_PLAN.md): Complete architecture specification, quant framework, data pipelines, schema design, and roadmap.
-- [`invst/`](./invst/): Core engine implementation:
-  - [`invst/src/invst/`](./invst/src/invst/): Source package (ingestion, scoring, optimization, backtesting, ML, reporting, monitoring)
-  - [`invst/app/`](./invst/app/): Streamlit interactive dashboard
-  - [`invst/db/`](./invst/db/): SQLite schema migrations and static seed data
-  - [`invst/config/`](./invst/config/): YAML settings, factor weights, sector mappings
-  - [`invst/docs/`](./invst/docs/): Technical documentation and decision logs
-  - [`invst/tests/`](./invst/tests/): Comprehensive pytest suite
+- [`invst/`](./invst/):
+  - [`invst/frontend/`](./invst/frontend/): React 18 + Vite 6 + Tailwind CSS SPA, optimized with code-splitting and Nginx container.
+  - [`invst/backend/`](./invst/backend/): Python 3.11+ institutional quantitative investment engine and FastAPI REST API.
+    - [`invst/backend/src/invst/`](./invst/backend/src/invst/): Ingestion, scoring, optimization, backtesting, ML, reporting, and monitoring.
+    - [`invst/backend/db/`](./invst/backend/db/): SQLite schema migrations and static seed data.
+    - [`invst/backend/config/`](./invst/backend/config/): YAML settings, factor weights, and sector mappings.
+    - [`invst/backend/tests/`](./invst/backend/tests/): Comprehensive pytest suite.
+  - [`invst/docker-compose.yml`](./invst/docker-compose.yml): Production & local container orchestration.
 
 ---
 

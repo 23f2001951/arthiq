@@ -35,6 +35,8 @@ def create_app() -> FastAPI:
     # Mount pre-built React frontend if dist/ exists
     root = get_project_root()
     dist_dir = root / "frontend" / "dist"
+    if not dist_dir.is_dir():
+        dist_dir = root.parent / "frontend" / "dist"
     if dist_dir.is_dir():
         app.mount("/", StaticFiles(directory=str(dist_dir), html=True), name="frontend")
 
