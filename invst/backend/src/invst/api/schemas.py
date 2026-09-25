@@ -248,6 +248,7 @@ class UniverseResponse(BaseModel):
 
 
 class LoginRequest(BaseModel):
+    email: str | None = None
     password: str
 
 
@@ -255,11 +256,93 @@ class LoginResponse(BaseModel):
     token: str
     expires_in_hours: int = 72
     status: str = "authenticated"
+    role: str = "user"
+    user_type: str = "PRO_INVESTOR"
+    email: str = ""
+    name: str = ""
 
 
 class AuthVerifyResponse(BaseModel):
     authenticated: bool
     auth_enabled: bool
+    role: str | None = None
+    user_type: str | None = None
+    email: str | None = None
+    name: str | None = None
+
+
+class EmailLookupRequest(BaseModel):
+    email: str
+
+
+class EmailLookupResponse(BaseModel):
+    email: str
+    exists: bool
+    status: str  # INVITED, ACTIVE, SUSPENDED, NOT_FOUND
+    name: str | None = None
+    role: str | None = None
+    user_type: str | None = None
+
+
+class SetPasswordRequest(BaseModel):
+    email: str
+    password: str
+
+
+class SetPasswordResponse(BaseModel):
+    token: str
+    email: str
+    role: str
+    user_type: str = "PRO_INVESTOR"
+    status: str
+    message: str = "Account activated successfully."
+
+
+class UserProfile(BaseModel):
+    id: int
+    email: str
+    name: str | None = None
+    role: str
+    user_type: str = "PRO_INVESTOR"
+    status: str
+    created_at: str | None = None
+    last_login: str | None = None
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class ChangePasswordResponse(BaseModel):
+    success: bool = True
+    message: str = "Password updated successfully."
+
+
+class UpdateProfileRequest(BaseModel):
+    name: str | None = None
+
+
+class AdminCreateUserRequest(BaseModel):
+    email: str
+    name: str | None = None
+    role: str = "user"
+    user_type: str | None = None
+
+
+class AdminUpdateStatusRequest(BaseModel):
+    status: str
+
+
+class AdminSummaryResponse(BaseModel):
+    total_users: int
+    active_users: int
+    invited_users: int
+    suspended_users: int
+    model_trained: bool
+    model_version: str | None = None
+    backtests_count: int
+    system_status: str
 
 
 # -------------------------------------------------------------------------
@@ -346,6 +429,19 @@ class EventsFeedResponse(BaseModel):
 # -------------------------------------------------------------------------
 # Live Feeds, Single Stock Analyzer & Personal Portfolio Schemas
 # -------------------------------------------------------------------------
+
+class MarketTickerItem(BaseModel):
+    symbol: str
+    price: str
+    change: str
+    isPositive: bool = True
+    is_positive: bool = True
+    change_pct: float = 0.0
+    price_val: float = 0.0
+    category: str = "EQUITY"
+    raw_symbol: str = ""
+    last_updated: str = ""
+
 
 class MacroPulseResponse(BaseModel):
     asof_date: str

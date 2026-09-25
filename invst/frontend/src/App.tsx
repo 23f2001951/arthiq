@@ -6,7 +6,8 @@ import { MarketTickerTape } from './components/MarketTickerTape';
 import { StockIdeasSubNav, StockIdeasSubTab } from './components/StockIdeasSubNav';
 import { ModernArtboxFooter } from './components/ModernArtboxFooter';
 import { AuthGate } from './components/AuthGate';
-import { fetchHealth, verifyAuth, logout } from './api/client';
+import { ProfileSettingsModal } from './components/ProfileSettingsModal';
+import { fetchHealth, verifyAuth, logout, getUserRole } from './api/client';
 
 // Lazy-loaded views for optimal SPA performance and code splitting
 const DashboardView = React.lazy(() =>
@@ -30,6 +31,15 @@ const BacktestView = React.lazy(() =>
 const HealthView = React.lazy(() =>
   import('./views/HealthView').then((m) => ({ default: m.HealthView }))
 );
+const AdminDashboardView = React.lazy(() =>
+  import('./views/AdminDashboardView').then((m) => ({ default: m.AdminDashboardView }))
+);
+const UserManagementView = React.lazy(() =>
+  import('./views/UserManagementView').then((m) => ({ default: m.UserManagementView }))
+);
+const ModelTrainingView = React.lazy(() =>
+  import('./views/ModelTrainingView').then((m) => ({ default: m.ModelTrainingView }))
+);
 
 const ViewLoadingSkeleton: React.FC = () => (
   <div className="space-y-6 animate-pulse py-4">
@@ -45,10 +55,13 @@ const ViewLoadingSkeleton: React.FC = () => (
 
 export const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
-  const [currentTab, setCurrentTab] = useState<NavTab>('dashboard');
+  const [currentTab, setCurrentTab] = useState<NavTab>(() => {
+    return getUserRole() === 'admin' ? 'admin_dashboard' : 'dashboard';
+  });
   const [stockIdeasSubTab, setStockIdeasSubTab] = useState<StockIdeasSubTab>('alpha_picks');
   const [analyzerSymbol, setAnalyzerSymbol] = useState<string>('TCS');
   const [systemHealthy, setSystemHealthy] = useState<boolean>(true);
+  const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
 
   // Sidebar collapse state with localStorage persistence
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
@@ -76,6 +89,14 @@ export const App: React.FC = () => {
   useEffect(() => {
     verifyAuth().then((authed) => {
       setIsAuthenticated(authed);
+      if (authed) {
+        const role = getUserRole();
+        if (role === 'admin') {
+          setCurrentTab('admin_dashboard');
+        } else {
+          setCurrentTab('dashboard');
+        }
+      }
     });
 
     const handleUnauthorized = () => {
@@ -87,16 +108,39 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // Fetch health when authenticated
+  // Ensure role tab boundaries
   useEffect(() => {
     if (isAuthenticated) {
-      fetchHealth()
-        .then((res) => {
-          setSystemHealthy(res.overall_status === 'HEALTHY');
-        })
-        .catch(() => {
-          setSystemHealthy(false);
-        });
+      const role = getUserRole();
+      if (role === 'admin') {
+        const adminTabs: NavTab[] = ['admin_dashboard', 'users', 'model_training', 'backtest', 'health'];
+        if (!adminTabs.includes(currentTab)) {
+          setCurrentTab('admin_dashboard');
+        }
+      } else {
+        const investorTabs: NavTab[] = ['dashboard', 'recommendations', 'analyzer', 'portfolio', 'targetlist'];
+        if (!investorTabs.includes(currentTab)) {
+          setCurrentTab('dashboard');
+        }
+      }
+    }
+  }, [isAuthenticated, currentTab]);
+
+  // Fetch health if admin
+  useEffect(() => {
+    if (isAuthenticated) {
+      const role = getUserRole();
+      if (role === 'admin') {
+        fetchHealth()
+          .then((res) => {
+            setSystemHealthy(res.overall_status === 'HEALTHY');
+          })
+          .catch(() => {
+            setSystemHealthy(false);
+          });
+      } else {
+        setSystemHealthy(true);
+      }
     }
   }, [isAuthenticated]);
 
@@ -123,14 +167,26 @@ export const App: React.FC = () => {
     );
   }
 
-  // 2. Unauthenticated: Render Luxury Auth Gate
+  // 2. Unauthenticated: Render Multi-Step Auth Gate
   if (!isAuthenticated) {
-    return <AuthGate onAuthenticated={() => setIsAuthenticated(true)} />;
+    return (
+      <AuthGate
+        onAuthenticated={() => {
+          setIsAuthenticated(true);
+          const role = getUserRole();
+          if (role === 'admin') {
+            setCurrentTab('admin_dashboard');
+          } else {
+            setCurrentTab('dashboard');
+          }
+        }}
+      />
+    );
   }
 
   // 3. Authenticated: Render Main Portal with SidebarNav on the Left
   return (
-    <div className="min-h-screen flex bg-[#040508] text-slate-100 font-sans selection:bg-winsor-600 selection:text-white">
+    <div className="min-h-screen flex bg-[#040508] text-slate-100 font-sans selection:bg-amber-500 selection:text-slate-950">
       {/* Collapsible Left-Side Navigation Bar */}
       <SidebarNav
         currentTab={currentTab}
@@ -144,6 +200,7 @@ export const App: React.FC = () => {
         onLogout={handleLogout}
         mobileOpen={isMobileOpen}
         onCloseMobile={() => setIsMobileOpen(false)}
+        onOpenProfile={() => setIsProfileOpen(true)}
       />
 
       {/* Main Content Area (Right) */}
@@ -158,7 +215,7 @@ export const App: React.FC = () => {
           onOpenMobileSidebar={() => setIsMobileOpen(true)}
         />
 
-        {/* Live Animated Market Ticker Tape */}
+        {/* Live Market Ticker Tape */}
         <MarketTickerTape />
 
         {/* Sub-navbar directly under Market Ticker for Stock Ideas Tab */}
@@ -172,6 +229,16 @@ export const App: React.FC = () => {
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
           <div key={currentTab} className="animate-fade-in-up space-y-8">
             <React.Suspense fallback={<ViewLoadingSkeleton />}>
+              {/* Admin Platform Views */}
+              {currentTab === 'admin_dashboard' && (
+                <AdminDashboardView onNavigate={(tab) => setCurrentTab(tab as NavTab)} />
+              )}
+              {currentTab === 'users' && <UserManagementView />}
+              {currentTab === 'model_training' && <ModelTrainingView />}
+              {currentTab === 'backtest' && <BacktestView />}
+              {currentTab === 'health' && <HealthView />}
+
+              {/* Pro Investor Platform Views */}
               {currentTab === 'dashboard' && (
                 <DashboardView
                   onNavigateTab={(tab, subTab) => {
@@ -201,8 +268,6 @@ export const App: React.FC = () => {
                   }}
                 />
               )}
-              {currentTab === 'backtest' && <BacktestView />}
-              {currentTab === 'health' && <HealthView />}
             </React.Suspense>
           </div>
 
@@ -210,6 +275,13 @@ export const App: React.FC = () => {
           <ModernArtboxFooter />
         </main>
       </div>
+
+      {/* Profile Details & Password Settings Modal */}
+      <ProfileSettingsModal
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
+        onLogout={handleLogout}
+      />
     </div>
   );
 };

@@ -18,7 +18,17 @@ import {
   Target,
 } from 'lucide-react';
 
-export type NavTab = 'dashboard' | 'recommendations' | 'analyzer' | 'portfolio' | 'targetlist' | 'backtest' | 'health';
+export type NavTab =
+  | 'dashboard'
+  | 'recommendations'
+  | 'analyzer'
+  | 'portfolio'
+  | 'targetlist'
+  | 'admin_dashboard'
+  | 'users'
+  | 'model_training'
+  | 'backtest'
+  | 'health';
 
 interface NavbarProps {
   currentTab: NavTab;

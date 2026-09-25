@@ -11,8 +11,11 @@ import {
   ChevronRight,
   LogOut,
   X,
+  Users,
+  BrainCircuit,
 } from 'lucide-react';
 import { NavTab } from './Navbar';
+import { getUserRole, getUserEmail } from '../api/client';
 
 interface SidebarNavProps {
   currentTab: NavTab;
@@ -23,6 +26,7 @@ interface SidebarNavProps {
   onLogout?: () => void;
   mobileOpen?: boolean;
   onCloseMobile?: () => void;
+  onOpenProfile?: () => void;
 }
 
 interface NavItemConfig {
@@ -43,8 +47,61 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
   onLogout,
   mobileOpen,
   onCloseMobile,
+  onOpenProfile,
 }) => {
-  const navSections: { category: string; items: NavItemConfig[] }[] = [
+  const role = getUserRole();
+  const userEmail = getUserEmail() || (role === 'admin' ? 'admin@arth.iq' : 'investor@arth.iq');
+
+  // Strict separation: Admin sees ONLY Admin tabs. Pro Investor sees ONLY Investor tabs.
+  const adminSections: { category: string; items: NavItemConfig[] }[] = [
+    {
+      category: 'Governance',
+      items: [
+        {
+          id: 'admin_dashboard',
+          label: 'Admin Overview',
+          badge: 'PORTAL',
+          badgeColor: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+          icon: LayoutDashboard,
+        },
+        {
+          id: 'users',
+          label: 'User Management',
+          badge: 'ROSTER',
+          badgeColor: 'bg-sky-500/15 text-sky-300 border-sky-500/30',
+          icon: Users,
+        },
+      ],
+    },
+    {
+      category: 'Quant ML & Systems',
+      items: [
+        {
+          id: 'model_training',
+          label: 'ML Model Training',
+          badge: 'ALPHA',
+          badgeColor: 'bg-sky-500/15 text-sky-400 border-sky-500/30',
+          icon: BrainCircuit,
+        },
+        {
+          id: 'backtest',
+          label: 'Backtest Engine',
+          badge: 'SIM',
+          badgeColor: 'bg-purple-500/15 text-purple-400 border-purple-500/30',
+          icon: Sliders,
+        },
+        {
+          id: 'health',
+          label: 'System & PIT Health',
+          badge: 'AUDIT',
+          badgeColor: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+          icon: ShieldCheck,
+        },
+      ],
+    },
+  ];
+
+  const investorSections: { category: string; items: NavItemConfig[] }[] = [
     {
       category: 'Intelligence',
       items: [
@@ -90,22 +147,9 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
         },
       ],
     },
-    {
-      category: 'Quant Lab',
-      items: [
-        {
-          id: 'backtest',
-          label: 'Backtest Lab',
-          icon: Sliders,
-        },
-        {
-          id: 'health',
-          label: 'System Health',
-          icon: ShieldCheck,
-        },
-      ],
-    },
   ];
+
+  const navSections = role === 'admin' ? adminSections : investorSections;
 
   return (
     <>
@@ -290,20 +334,30 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
       <div className="p-3 border-t border-white/[0.06] bg-[#070912]/90 space-y-2">
         {/* User Card */}
         <div
-          className={`flex items-center rounded-xl p-2 bg-[#0a0e19] border border-white/[0.06] ${
+          onClick={onOpenProfile}
+          title="Click to view Profile Details & Settings (Update Password)"
+          className={`flex items-center rounded-xl p-2 bg-[#0a0e19] hover:bg-[#111628] border border-white/[0.06] hover:border-white/20 transition-all cursor-pointer group ${
             isCollapsed ? 'justify-center' : 'justify-between'
           }`}
         >
           <div className="flex items-center space-x-2.5 overflow-hidden">
-            <div className="w-7 h-7 shrink-0 rounded-full bg-gradient-to-tr from-amber-500 via-amber-400 to-yellow-200 text-black flex items-center justify-center font-black text-xs shadow-md">
-              M
+            <div className={`w-7 h-7 shrink-0 rounded-full flex items-center justify-center font-black text-xs shadow-md transition-transform group-hover:scale-110 ${
+              role === 'admin'
+                ? 'bg-gradient-to-tr from-amber-500 to-yellow-300 text-slate-950'
+                : 'bg-gradient-to-tr from-sky-500 to-blue-400 text-slate-950'
+            }`}>
+              {userEmail.charAt(0).toUpperCase()}
             </div>
             {!isCollapsed && (
               <div className="overflow-hidden">
-                <div className="text-xs font-bold text-slate-200 truncate">Mandeep</div>
-                <div className="text-[9px] font-mono text-emerald-400 flex items-center">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1 animate-pulse" />
-                  PRO INVESTOR
+                <div className="text-xs font-bold text-slate-200 truncate font-mono group-hover:text-white transition-colors">{userEmail}</div>
+                <div className={`text-[9px] font-mono flex items-center font-bold ${
+                  role === 'admin' ? 'text-amber-400' : 'text-sky-400'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full mr-1 animate-pulse ${
+                    role === 'admin' ? 'bg-amber-400' : 'bg-sky-400'
+                  }`} />
+                  {role === 'admin' ? 'PLATFORM ADMIN' : 'PRO INVESTOR'}
                 </div>
               </div>
             )}
@@ -311,7 +365,10 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
 
           {!isCollapsed && onLogout && (
             <button
-              onClick={onLogout}
+              onClick={(e) => {
+                e.stopPropagation();
+                onLogout();
+              }}
               title="Sign Out"
               className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-all cursor-pointer"
             >

@@ -5,27 +5,30 @@ import {
   Calendar,
   Plus,
   ShieldCheck,
-  AlertCircle,
   Sparkles,
   Search,
   LayoutDashboard,
   Briefcase,
   Target,
   Sliders,
+  Users,
+  BrainCircuit,
 } from 'lucide-react';
 import { NavTab } from './Navbar';
+import { getUserRole } from '../api/client';
 
 interface TopHeaderProps {
   currentTab: NavTab;
-  systemHealthy: boolean;
+  systemHealthy?: boolean;
   onQuickAction?: () => void;
   onOpenMobileSidebar?: () => void;
 }
 
 const TAB_TITLES: Record<NavTab, { title: string; subtitle: string; icon: React.ComponentType<{ className?: string }> }> = {
+  // Investor Platform Tabs
   dashboard: {
-    title: 'Market Overview & Pulse',
-    subtitle: 'Point-in-Time Indian Equities Architecture',
+    title: 'Executive Portfolio Dashboard',
+    subtitle: 'Point-in-Time Indian Equities & Tactical Dip Allocation',
     icon: LayoutDashboard,
   },
   recommendations: {
@@ -34,7 +37,7 @@ const TAB_TITLES: Record<NavTab, { title: string; subtitle: string; icon: React.
     icon: Sparkles,
   },
   analyzer: {
-    title: 'Single Stock Analyzer',
+    title: 'Single Stock & ETF Analyzer',
     subtitle: 'Live returns, BQS vs investment score, and redlines',
     icon: Search,
   },
@@ -48,13 +51,29 @@ const TAB_TITLES: Record<NavTab, { title: string; subtitle: string; icon: React.
     subtitle: 'Dip accumulation triggers, watchlist levels & entry zones',
     icon: Target,
   },
+  // Admin Platform Tabs
+  admin_dashboard: {
+    title: 'Admin Command Center',
+    subtitle: 'Platform telemetry, Pro Investor accounts, and ML model status',
+    icon: LayoutDashboard,
+  },
+  users: {
+    title: 'Pro Investor Management',
+    subtitle: 'Provision and onboard institutional investors by email',
+    icon: Users,
+  },
+  model_training: {
+    title: 'Alpha Model Training & Calibration',
+    subtitle: 'Point-in-Time LightGBM hyperparameters and feature sets',
+    icon: BrainCircuit,
+  },
   backtest: {
-    title: 'Quantitative Backtest Lab',
+    title: 'Quantitative Backtest Engine',
     subtitle: 'Factor persistence & historical walk-forward simulation',
     icon: Sliders,
   },
   health: {
-    title: 'System Health & Diagnostics',
+    title: 'System Health & PIT Audit',
     subtitle: 'Point-in-Time data integrity and service monitors',
     icon: ShieldCheck,
   },
@@ -62,7 +81,7 @@ const TAB_TITLES: Record<NavTab, { title: string; subtitle: string; icon: React.
 
 export const TopHeader: React.FC<TopHeaderProps> = ({
   currentTab,
-  systemHealthy,
+  systemHealthy: _systemHealthy,
   onQuickAction,
   onOpenMobileSidebar,
 }) => {
@@ -99,6 +118,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
 
   const meta = TAB_TITLES[currentTab] || TAB_TITLES.dashboard;
   const PageIcon = meta.icon;
+  const role = getUserRole();
 
   return (
     <header className="sticky top-0 z-30 bg-[#06070a]/90 backdrop-blur-xl border-b border-white/[0.06] select-none">
@@ -132,10 +152,11 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
             </div>
           </div>
 
-          {/* Right: Actions + Live IST Clock + Status */}
-          <div className="flex items-center space-x-3 sm:space-x-4">
-            {/* Tactical Order / Analyze CTA */}
-            {onQuickAction && (
+          {/* Right: Actions + Live IST Clock */}
+          <div className="flex items-center space-x-2.5 sm:space-x-3">
+
+            {/* Tactical Order / Analyze CTA (Investor Only) */}
+            {role === 'user' && onQuickAction && (
               <button
                 onClick={onQuickAction}
                 className="flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-winsor-600 to-sky-500 hover:brightness-110 text-white text-xs font-bold shadow-[0_0_15px_rgba(37,99,235,0.35)] transition-all cursor-pointer"
@@ -161,26 +182,6 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
               </div>
             </div>
 
-            {/* System Engine Status */}
-            <div
-              className={`hidden md:flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono font-bold border ${
-                systemHealthy
-                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                  : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-              }`}
-            >
-              {systemHealthy ? (
-                <>
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>PIT ENGINE ONLINE</span>
-                </>
-              ) : (
-                <>
-                  <AlertCircle className="w-3 h-3 text-amber-400" />
-                  <span>DEGRADED</span>
-                </>
-              )}
-            </div>
           </div>
         </div>
       </div>

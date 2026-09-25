@@ -10,22 +10,46 @@ from datetime import date
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 
 from invst.api.auth import (
+    activate_user_password,
+    create_access_token,
+    create_invited_user,
     create_session,
+    decode_access_token,
+    delete_user_by_id,
+    get_admin_email,
+    get_current_user,
     get_session_expiry_hours,
+    get_user_by_email,
+    get_user_by_id,
+    init_users_table,
     is_auth_enabled,
+    list_all_users,
+    require_admin,
     require_auth,
     revoke_session,
+    update_user_last_login,
+    update_user_password,
+    update_user_profile,
+    update_user_status,
     validate_session,
     verify_password,
+    verify_password_hash,
 )
 from invst.api.schemas import (
+    AdminCreateUserRequest,
+    AdminSummaryResponse,
+    AdminUpdateStatusRequest,
     AuthVerifyResponse,
     BacktestHistoryItem,
     BacktestMetricsSummary,
     BacktestRunRequest,
     BacktestRunResponse,
+    ChangePasswordRequest,
+    ChangePasswordResponse,
     CorporateEventItem,
     DashboardResponse,
+    EmailLookupRequest,
+    EmailLookupResponse,
     EventsFeedResponse,
     HealthCheckItem,
     HealthResponse,
@@ -35,6 +59,7 @@ from invst.api.schemas import (
     LoginRequest,
     LoginResponse,
     MacroPulseItem,
+    MarketTickerItem,
     MainPortfolioPositionItem,
     MainPortfolioStatus,
     QuickPickItem,
@@ -42,9 +67,12 @@ from invst.api.schemas import (
     RecommendationsResponse,
     RecommendationsV2Response,
     ScenarioSchema,
+    SetPasswordRequest,
+    SetPasswordResponse,
     StockRecommendationItem,
     StockRecommendationV2Item,
     UniverseResponse,
+    UserProfile,
     FullStockAnalysisResponse,
     MacroPulseResponse,
     ModelStatusResponse,
@@ -57,6 +85,7 @@ from invst.api.schemas import (
     PortfolioDetailSchema,
     CreatePortfolioRequest,
     UpdatePortfolioRequest,
+    UpdateProfileRequest,
     AddStockToPortfolioRequest,
 )
 from invst.backtest.engine import run_walk_forward_backtest
@@ -74,43 +103,267 @@ logger = logging.getLogger("invst.api")
 router = APIRouter(prefix="/api")
 
 
+from invst.db.engine import get_db_connection
+
+# -------------------------------------------------------------------------
+# Database Dependency
+# -------------------------------------------------------------------------
+def get_db() -> Generator[Any, None, None]:
+    """Provide a database connection supporting Neon PostgreSQL and SQLite."""
+    conn = get_db_connection()
+    init_users_table(conn)
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+
 # -------------------------------------------------------------------------
 # Authentication Routes
 # -------------------------------------------------------------------------
-@router.post("/auth/login", response_model=LoginResponse)
-def login(payload: LoginRequest):
-    """Authenticate with master password and receive a session bearer token."""
-    if not is_auth_enabled():
-        return LoginResponse(token="auth_disabled", expires_in_hours=72)
-
-    if not verify_password(payload.password):
+@router.post("/auth/lookup-email", response_model=EmailLookupResponse)
+def lookup_email(payload: EmailLookupRequest, conn: sqlite3.Connection = Depends(get_db)):
+    """Check if an email exists and return account onboarding status."""
+    clean_email = payload.email.strip().lower()
+    if not clean_email or "@" not in clean_email:
         raise HTTPException(
-            status_code=401,
-            detail="Incorrect master password. Access denied.",
+            status_code=400,
+            detail="Please enter a valid email address.",
+        )
+    parts = clean_email.split("@")
+    if len(parts) != 2 or not parts[0] or not parts[1] or "." not in parts[1]:
+        raise HTTPException(
+            status_code=400,
+            detail="Please enter a valid email address (e.g. user@institution.com).",
+        )
+    try:
+        user = get_user_by_email(conn, clean_email)
+    except Exception as exc:
+        logger.exception("Failed to query user by email '%s': %s", clean_email, exc)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error during email lookup: {exc}",
+        )
+    if not user:
+        return EmailLookupResponse(
+            email=clean_email,
+            exists=False,
+            status="NOT_FOUND",
+        )
+    return EmailLookupResponse(
+        email=user["email"],
+        exists=True,
+        status=user["status"],
+        name=user["name"],
+        role=user["role"],
+        user_type=user.get("user_type") or ("ADMIN" if user.get("role") == "admin" else "PRO_INVESTOR"),
+    )
+
+
+@router.post("/auth/set-password", response_model=SetPasswordResponse)
+def set_password(payload: SetPasswordRequest, conn: sqlite3.Connection = Depends(get_db)):
+    """First-time password creation for invited Pro Investors to activate their account."""
+    if len(payload.password.strip()) < 4:
+        raise HTTPException(
+            status_code=400,
+            detail="Password must be at least 4 characters.",
+        )
+    user = activate_user_password(conn, payload.email, payload.password)
+    expiry_hours = get_session_expiry_hours()
+    token = create_access_token(user, expiry_hours=expiry_hours)
+    return SetPasswordResponse(
+        token=token,
+        email=user["email"],
+        role=user["role"],
+        user_type=user.get("user_type") or ("ADMIN" if user.get("role") == "admin" else "PRO_INVESTOR"),
+        status=user["status"],
+        message="Account activated successfully.",
+    )
+
+
+@router.post("/auth/login", response_model=LoginResponse)
+def login(payload: LoginRequest, conn: sqlite3.Connection = Depends(get_db)):
+    """Authenticate with email + password (or master password fallback) and receive JWT."""
+    if not is_auth_enabled():
+        return LoginResponse(
+            token="auth_disabled",
+            expires_in_hours=72,
+            role="admin",
+            user_type="ADMIN",
+            email=get_admin_email(),
+            name="Developer",
         )
 
+    clean_email = payload.email.strip().lower() if payload.email else None
+
+    # If email provided:
+    if clean_email:
+        if not payload.password:
+            raise HTTPException(
+                status_code=400,
+                detail="Password is required.",
+            )
+        try:
+            user = get_user_by_email(conn, clean_email)
+        except Exception as exc:
+            logger.exception("Database error during user login query for %s: %s", clean_email, exc)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Database error during login: {exc}",
+            )
+        if not user:
+            raise HTTPException(
+                status_code=401,
+                detail=f"No account registered with email '{clean_email}'. Please contact your platform administrator.",
+            )
+        if user["status"] == "SUSPENDED":
+            raise HTTPException(
+                status_code=403,
+                detail="Your account has been suspended. Please contact platform administrator.",
+            )
+        if user["status"] == "INVITED" and not user["password_hash"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Account not activated yet. Please set your password to activate your account.",
+            )
+        if not verify_password_hash(payload.password, user["password_hash"]):
+            raise HTTPException(
+                status_code=401,
+                detail="Incorrect password. Please try again.",
+            )
+        try:
+            update_user_last_login(conn, clean_email)
+        except Exception as exc:
+            logger.warning("Could not update last login for %s: %s", clean_email, exc)
+        expiry_hours = get_session_expiry_hours()
+        token = create_access_token(user, expiry_hours=expiry_hours)
+        return LoginResponse(
+            token=token,
+            expires_in_hours=expiry_hours,
+            status="authenticated",
+            role=user["role"],
+            user_type=user.get("user_type") or ("ADMIN" if user.get("role") == "admin" else "PRO_INVESTOR"),
+            email=user["email"],
+            name=user.get("name") or "",
+        )
+
+    # Admin direct login (admin@arth.iq is the master administrator)
+    target_admin_email = get_admin_email()
+    admin_user = get_user_by_email(conn, target_admin_email)
+    if not admin_user:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, email, name, password_hash, role, user_type FROM users WHERE role = 'admin' LIMIT 1")
+        r = cursor.fetchone()
+        if r:
+            admin_user = {"id": r[0], "email": r[1], "name": r[2], "password_hash": r[3], "role": r[4], "user_type": r[5]}
+
+    if not admin_user or not admin_user.get("password_hash"):
+        raise HTTPException(
+            status_code=401,
+            detail="Administrator account not found or has no password set.",
+        )
+
+    if not verify_password_hash(payload.password, admin_user["password_hash"]):
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect administrator password. Access denied.",
+        )
+
+    update_user_last_login(conn, admin_user["email"])
     expiry_hours = get_session_expiry_hours()
-    token = create_session(expiry_hours=expiry_hours)
+    token = create_access_token(admin_user, expiry_hours=expiry_hours)
     return LoginResponse(
         token=token,
         expires_in_hours=expiry_hours,
         status="authenticated",
+        role="admin",
+        user_type="ADMIN",
+        email=admin_user["email"],
+        name=admin_user.get("name") or "Platform Administrator",
     )
+
 
 
 @router.get("/auth/verify", response_model=AuthVerifyResponse)
 def verify_auth(authorization: str | None = Header(None)):
-    """Verify whether client's session token is currently valid."""
+    """Verify whether client's session token is currently valid and return role info."""
     if not is_auth_enabled():
-        return AuthVerifyResponse(authenticated=True, auth_enabled=False)
+        return AuthVerifyResponse(authenticated=True, auth_enabled=False, role="admin", user_type="ADMIN", email=get_admin_email())
 
     if not authorization:
         return AuthVerifyResponse(authenticated=False, auth_enabled=True)
 
     parts = authorization.split()
     token = parts[1] if len(parts) == 2 and parts[0].lower() == "bearer" else authorization
+    payload = decode_access_token(token)
+    if payload:
+        role = payload.get("role", "user")
+        return AuthVerifyResponse(
+            authenticated=True,
+            auth_enabled=True,
+            role=role,
+            user_type=payload.get("user_type") or ("ADMIN" if role == "admin" else "PRO_INVESTOR"),
+            email=payload.get("email"),
+            name=payload.get("name"),
+        )
     is_valid = validate_session(token)
-    return AuthVerifyResponse(authenticated=is_valid, auth_enabled=True)
+    return AuthVerifyResponse(
+        authenticated=is_valid,
+        auth_enabled=True,
+        role="admin" if is_valid else None,
+        user_type="ADMIN" if is_valid else None,
+        email=get_admin_email() if is_valid else None,
+    )
+
+
+@router.get("/auth/me", response_model=UserProfile, dependencies=[Depends(require_auth)])
+def get_current_user_profile(
+    current_user: dict = Depends(require_auth),
+    conn: sqlite3.Connection = Depends(get_db),
+):
+    """Retrieve profile of currently authenticated user."""
+    email = current_user.get("email") or current_user.get("sub")
+    user = get_user_by_email(conn, email) if email else None
+    if not user:
+        role = current_user.get("role", "user")
+        return UserProfile(
+            id=current_user.get("user_id", 1),
+            email=email or "unknown@arth.iq",
+            name=current_user.get("name", "User"),
+            role=role,
+            user_type=current_user.get("user_type") or ("ADMIN" if role == "admin" else "PRO_INVESTOR"),
+            status="ACTIVE",
+        )
+    return UserProfile(**user)
+
+
+@router.post("/auth/change-password", response_model=ChangePasswordResponse, dependencies=[Depends(require_auth)])
+def change_password(
+    payload: ChangePasswordRequest,
+    current_user: dict = Depends(require_auth),
+    conn: sqlite3.Connection = Depends(get_db),
+):
+    """Authenticated user or admin updates their password after verifying current password."""
+    email = current_user.get("email") or current_user.get("sub")
+    if not email:
+        raise HTTPException(status_code=400, detail="Cannot identify user email.")
+    update_user_password(conn, email, payload.current_password, payload.new_password)
+    return ChangePasswordResponse(success=True, message="Password updated successfully.")
+
+
+@router.patch("/auth/profile", response_model=UserProfile, dependencies=[Depends(require_auth)])
+def update_profile(
+    payload: UpdateProfileRequest,
+    current_user: dict = Depends(require_auth),
+    conn: sqlite3.Connection = Depends(get_db),
+):
+    """Authenticated user updates their profile details."""
+    email = current_user.get("email") or current_user.get("sub")
+    if not email:
+        raise HTTPException(status_code=400, detail="Cannot identify user email.")
+    updated = update_user_profile(conn, email, payload.name)
+    return UserProfile(**updated)
 
 
 @router.post("/auth/logout")
@@ -123,20 +376,79 @@ def logout(authorization: str | None = Header(None)):
     return {"status": "logged_out"}
 
 
-def get_db() -> Generator[sqlite3.Connection, None, None]:
-    """Provide a database connection with foreign keys and WAL mode enabled."""
-    cfg = get_config()
-    conn = sqlite3.connect(str(cfg.database.path), check_same_thread=False)
-    conn.execute("PRAGMA foreign_keys = ON;")
-    conn.execute("PRAGMA journal_mode = WAL;")
-    try:
-        yield conn
-    finally:
-        conn.close()
+# -------------------------------------------------------------------------
+# Admin Platform Routes (Admin Role Required)
+# -------------------------------------------------------------------------
+@router.get("/admin/summary", response_model=AdminSummaryResponse, dependencies=[Depends(require_admin)])
+def get_admin_summary(conn: sqlite3.Connection = Depends(get_db)):
+    """Provide KPI summary for Admin Dashboard."""
+    users = list_all_users(conn)
+    total_users = len(users)
+    active_users = sum(1 for u in users if u["status"] == "ACTIVE")
+    invited_users = sum(1 for u in users if u["status"] == "INVITED")
+    suspended_users = sum(1 for u in users if u["status"] == "SUSPENDED")
+
+    # ML model status
+    meta = alpha_service.get_status()
+    model_trained = (meta.status == "TRAINED")
+    model_version = meta.model_type if model_trained else None
+
+    # Backtests count
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM backtest_runs")
+    backtests_count = cursor.fetchone()[0]
+
+    return AdminSummaryResponse(
+        total_users=total_users,
+        active_users=active_users,
+        invited_users=invited_users,
+        suspended_users=suspended_users,
+        model_trained=model_trained,
+        model_version=model_version,
+        backtests_count=backtests_count,
+        system_status="HEALTHY",
+    )
+
+
+@router.get("/admin/users", response_model=list[UserProfile], dependencies=[Depends(require_admin)])
+def admin_list_users(conn: sqlite3.Connection = Depends(get_db)):
+    """List all platform users (admins and pro investors)."""
+    users = list_all_users(conn)
+    return [UserProfile(**u) for u in users]
+
+
+@router.post("/admin/users", response_model=UserProfile, dependencies=[Depends(require_admin)])
+def admin_create_user(payload: AdminCreateUserRequest, conn: sqlite3.Connection = Depends(get_db)):
+    """Admin registers a new pro investor via their email."""
+    new_user = create_invited_user(conn, payload.email, payload.name, payload.role, payload.user_type)
+    return UserProfile(**new_user)
+
+
+@router.patch("/admin/users/{user_id}/status", response_model=UserProfile, dependencies=[Depends(require_admin)])
+def admin_update_user_status(user_id: int, payload: AdminUpdateStatusRequest, conn: sqlite3.Connection = Depends(get_db)):
+    """Admin updates user status (ACTIVE, SUSPENDED, INVITED)."""
+    updated = update_user_status(conn, user_id, payload.status)
+    return UserProfile(**updated)
+
+
+@router.delete("/admin/users/{user_id}", dependencies=[Depends(require_admin)])
+def admin_delete_user(
+    user_id: int,
+    conn: sqlite3.Connection = Depends(get_db),
+    admin_user: dict = Depends(require_admin),
+):
+    """Admin deletes user account."""
+    current_admin_id = admin_user.get("user_id") or admin_user.get("id")
+    delete_user_by_id(conn, user_id, current_admin_id)
+    return {"status": "deleted", "user_id": user_id}
+
 
 
 @router.get("/dashboard", response_model=DashboardResponse, dependencies=[Depends(require_auth)])
-def get_dashboard(conn: sqlite3.Connection = Depends(get_db)):
+def get_dashboard(
+    conn: sqlite3.Connection = Depends(get_db),
+    current_user: dict = Depends(require_auth),
+):
     """Retrieve portfolio dashboard KPIs, active target holdings, and sector weights."""
     from invst.portfolio.health import get_portfolio, evaluate_portfolio_health
     from invst.ingestion.live_market_feed import fetch_live_macro_pulse
@@ -144,7 +456,8 @@ def get_dashboard(conn: sqlite3.Connection = Depends(get_db)):
     # 1. Main Portfolio Status
     main_portfolio_status = None
     try:
-        user_p = get_portfolio(conn, "default")
+        user_id = current_user.get("user_id") or current_user.get("id") or 11
+        user_p = get_portfolio(conn, "default", user_id=user_id)
         if user_p and user_p.holdings:
             report = evaluate_portfolio_health(conn, user_p.holdings, fetch_live=True)
             pos_items = [
@@ -517,7 +830,7 @@ def get_quick_picks(
     )
 
 
-@router.post("/ml/train", response_model=ModelTrainResponse, dependencies=[Depends(require_auth)])
+@router.post("/ml/train", response_model=ModelTrainResponse, dependencies=[Depends(require_admin)])
 def post_train_ml_model(
     payload: ModelTrainRequest,
     conn: sqlite3.Connection = Depends(get_db),
@@ -552,7 +865,7 @@ def post_train_ml_model(
         raise HTTPException(status_code=500, detail=f"Model training error: {str(e)}")
 
 
-@router.get("/ml/status", response_model=ModelStatusResponse, dependencies=[Depends(require_auth)])
+@router.get("/ml/status", response_model=ModelStatusResponse, dependencies=[Depends(require_admin)])
 def get_ml_model_status():
     """Retrieve current operational status and diagnostics of the Alpha Model."""
     meta = alpha_service.get_status()
@@ -572,7 +885,7 @@ def get_ml_model_status():
     )
 
 
-@router.post("/backtest/run", response_model=BacktestRunResponse, dependencies=[Depends(require_auth)])
+@router.post("/backtest/run", response_model=BacktestRunResponse, dependencies=[Depends(require_admin)])
 def trigger_backtest(
     req: BacktestRunRequest,
     conn: sqlite3.Connection = Depends(get_db),
@@ -626,7 +939,7 @@ def trigger_backtest(
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-@router.get("/backtest/runs", response_model=list[BacktestHistoryItem], dependencies=[Depends(require_auth)])
+@router.get("/backtest/runs", response_model=list[BacktestHistoryItem], dependencies=[Depends(require_admin)])
 def list_backtest_runs(conn: sqlite3.Connection = Depends(get_db)):
     """Retrieve historical backtest runs stored in database."""
     cur = conn.cursor()
@@ -656,7 +969,7 @@ def list_backtest_runs(conn: sqlite3.Connection = Depends(get_db)):
     ]
 
 
-@router.get("/health", response_model=HealthResponse, dependencies=[Depends(require_auth)])
+@router.get("/health", response_model=HealthResponse, dependencies=[Depends(require_admin)])
 def get_health(conn: sqlite3.Connection = Depends(get_db)):
     """Run data quality and point-in-time anti-lookahead integrity checks."""
     dq_results = run_all_data_quality_checks(conn, asof=date.today())
@@ -861,6 +1174,19 @@ def get_events_feed(
 # Live Feeds, Stock Analyzer & Personal Portfolio API Routes
 # -------------------------------------------------------------------------
 
+@router.get("/v2/market/ticker-tape", response_model=list[MarketTickerItem])
+@router.get("/market/ticker-tape", response_model=list[MarketTickerItem])
+def get_market_ticker_tape(
+    fetch_live: bool = True,
+    conn: sqlite3.Connection = Depends(get_db),
+):
+    """Retrieve real-time ticker tape quotes for NSE/BSE indices, major equities, and ETFs."""
+    from invst.ingestion.live_market_feed import fetch_live_ticker_tape
+
+    items = fetch_live_ticker_tape(conn=conn, fetch_live=fetch_live)
+    return [MarketTickerItem(**it) for it in items]
+
+
 @router.get("/v2/macro/pulse", response_model=MacroPulseResponse)
 def get_macro_pulse(
     fetch_live: bool = True,
@@ -902,11 +1228,15 @@ def get_stock_analysis(
 
 
 @router.get("/v2/portfolio/holdings", response_model=list[UserHoldingSchema])
-def get_user_portfolio_holdings(conn: sqlite3.Connection = Depends(get_db)):
+def get_user_portfolio_holdings(
+    conn: sqlite3.Connection = Depends(get_db),
+    current_user: dict = Depends(require_auth),
+):
     """Retrieve user's saved manual stock holdings."""
     from invst.portfolio.health import load_user_holdings
 
-    holdings = load_user_holdings(conn)
+    user_id = current_user.get("user_id") or current_user.get("id") or 11
+    holdings = load_user_holdings(conn, user_id=user_id)
     return [
         UserHoldingSchema(symbol=h.symbol, shares=h.shares, buy_price=h.buy_price)
         for h in holdings
@@ -917,10 +1247,12 @@ def get_user_portfolio_holdings(conn: sqlite3.Connection = Depends(get_db)):
 def post_save_portfolio_holdings(
     payload: PortfolioSaveRequest,
     conn: sqlite3.Connection = Depends(get_db),
+    current_user: dict = Depends(require_auth),
 ):
     """Save user's manual portfolio holdings to database."""
     from invst.portfolio.health import UserHolding, save_user_holdings
 
+    user_id = current_user.get("user_id") or current_user.get("id") or 11
     user_holdings = [
         UserHolding(
             symbol=h.symbol.strip().upper(),
@@ -931,7 +1263,7 @@ def post_save_portfolio_holdings(
         )
         for h in payload.holdings
     ]
-    save_user_holdings(conn, user_holdings, portfolio_id="default")
+    save_user_holdings(conn, user_holdings, portfolio_id="default", user_id=user_id)
     return {"status": "saved", "count": len(user_holdings)}
 
 
@@ -940,6 +1272,7 @@ def post_evaluate_portfolio_health(
     payload: PortfolioSaveRequest,
     fetch_live: bool = True,
     conn: sqlite3.Connection = Depends(get_db),
+    current_user: dict = Depends(require_auth),
 ):
     """Compute real-time health diagnostic, redlines, sector caps, and BUY/SELL/HOLD advice."""
     from invst.portfolio.health import UserHolding, evaluate_portfolio_health
@@ -962,11 +1295,13 @@ def post_evaluate_portfolio_health(
 def get_user_portfolios(
     portfolio_type: str | None = None,
     conn: sqlite3.Connection = Depends(get_db),
+    current_user: dict = Depends(require_auth),
 ):
     """List all portfolios and target lists, optionally filtered by portfolio_type."""
     from invst.portfolio.health import list_portfolios
 
-    items = list_portfolios(conn, portfolio_type=portfolio_type)
+    user_id = current_user.get("user_id") or current_user.get("id") or 11
+    items = list_portfolios(conn, portfolio_type=portfolio_type, user_id=user_id)
     return [PortfolioSummarySchema(**it) for it in items]
 
 
@@ -974,10 +1309,12 @@ def get_user_portfolios(
 def post_create_portfolio(
     payload: CreatePortfolioRequest,
     conn: sqlite3.Connection = Depends(get_db),
+    current_user: dict = Depends(require_auth),
 ):
     """Create a new portfolio or target list."""
     from invst.portfolio.health import UserHolding, create_portfolio
 
+    user_id = current_user.get("user_id") or current_user.get("id") or 11
     initial_holdings = [
         UserHolding(
             symbol=h.symbol.strip().upper(),
@@ -994,6 +1331,7 @@ def post_create_portfolio(
         description=payload.description,
         portfolio_type=payload.portfolio_type,
         initial_holdings=initial_holdings,
+        user_id=user_id,
     )
     return PortfolioDetailSchema(
         id=p.id,
@@ -1019,11 +1357,13 @@ def post_create_portfolio(
 def get_user_portfolio_detail(
     portfolio_id: str,
     conn: sqlite3.Connection = Depends(get_db),
+    current_user: dict = Depends(require_auth),
 ):
     """Retrieve details and holdings for a specific portfolio."""
     from invst.portfolio.health import get_portfolio
 
-    p = get_portfolio(conn, portfolio_id)
+    user_id = current_user.get("user_id") or current_user.get("id") or 11
+    p = get_portfolio(conn, portfolio_id, user_id=user_id)
     if not p:
         raise HTTPException(status_code=404, detail=f"Portfolio '{portfolio_id}' not found")
     return PortfolioDetailSchema(
@@ -1051,10 +1391,12 @@ def put_update_user_portfolio(
     portfolio_id: str,
     payload: UpdatePortfolioRequest,
     conn: sqlite3.Connection = Depends(get_db),
+    current_user: dict = Depends(require_auth),
 ):
     """Update portfolio metadata and/or replace holdings."""
     from invst.portfolio.health import UserHolding, update_portfolio
 
+    user_id = current_user.get("user_id") or current_user.get("id") or 11
     holdings = None
     if payload.holdings is not None:
         holdings = [
@@ -1074,6 +1416,7 @@ def put_update_user_portfolio(
         description=payload.description,
         portfolio_type=payload.portfolio_type,
         holdings=holdings,
+        user_id=user_id,
     )
     if not p:
         raise HTTPException(status_code=404, detail=f"Portfolio '{portfolio_id}' not found")
@@ -1101,11 +1444,13 @@ def put_update_user_portfolio(
 def delete_user_portfolio(
     portfolio_id: str,
     conn: sqlite3.Connection = Depends(get_db),
+    current_user: dict = Depends(require_auth),
 ):
     """Delete a portfolio or target list."""
     from invst.portfolio.health import delete_portfolio
 
-    ok = delete_portfolio(conn, portfolio_id)
+    user_id = current_user.get("user_id") or current_user.get("id") or 11
+    ok = delete_portfolio(conn, portfolio_id, user_id=user_id)
     if not ok:
         raise HTTPException(status_code=404, detail=f"Portfolio '{portfolio_id}' not found")
     return {"status": "deleted", "portfolio_id": portfolio_id}
@@ -1116,10 +1461,12 @@ def post_add_stock_to_portfolio(
     portfolio_id: str,
     payload: AddStockToPortfolioRequest,
     conn: sqlite3.Connection = Depends(get_db),
+    current_user: dict = Depends(require_auth),
 ):
     """Add or update an individual stock in a specific portfolio or target list."""
     from invst.portfolio.health import UserHolding, add_or_update_holding_in_portfolio
 
+    user_id = current_user.get("user_id") or current_user.get("id") or 11
     holding = UserHolding(
         symbol=payload.symbol.strip().upper(),
         shares=payload.shares,
@@ -1127,7 +1474,7 @@ def post_add_stock_to_portfolio(
         target_price=payload.target_price,
         notes=payload.notes,
     )
-    add_or_update_holding_in_portfolio(conn, portfolio_id, holding)
+    add_or_update_holding_in_portfolio(conn, portfolio_id, holding, user_id=user_id)
     return {
         "status": "success",
         "portfolio_id": portfolio_id,
@@ -1143,11 +1490,13 @@ def delete_stock_from_portfolio(
     portfolio_id: str,
     symbol: str,
     conn: sqlite3.Connection = Depends(get_db),
+    current_user: dict = Depends(require_auth),
 ):
     """Remove a stock from a specific portfolio or target list."""
     from invst.portfolio.health import remove_holding_from_portfolio
 
-    remove_holding_from_portfolio(conn, portfolio_id, symbol.strip().upper())
+    user_id = current_user.get("user_id") or current_user.get("id") or 11
+    remove_holding_from_portfolio(conn, portfolio_id, symbol.strip().upper(), user_id=user_id)
     return {"status": "deleted", "portfolio_id": portfolio_id, "symbol": symbol.strip().upper()}
 
 
@@ -1156,11 +1505,13 @@ def post_evaluate_portfolio_health_by_id(
     portfolio_id: str,
     fetch_live: bool = True,
     conn: sqlite3.Connection = Depends(get_db),
+    current_user: dict = Depends(require_auth),
 ):
     """Evaluate health diagnosis for a specific saved portfolio or target list."""
     from invst.portfolio.health import evaluate_portfolio_health, load_user_holdings
 
-    holdings = load_user_holdings(conn, portfolio_id=portfolio_id)
+    user_id = current_user.get("user_id") or current_user.get("id") or 11
+    holdings = load_user_holdings(conn, portfolio_id=portfolio_id, user_id=user_id)
     report = evaluate_portfolio_health(conn, holdings, fetch_live=fetch_live)
     return PortfolioHealthResponse(**report.to_dict())
 

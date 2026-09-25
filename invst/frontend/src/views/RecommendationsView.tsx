@@ -3,13 +3,11 @@ import {
   fetchRecommendations,
   fetchQuickPicks,
   fetchModelStatus,
-  trainModel,
 } from '../api/client';
 import {
   StockRecommendationItem,
   QuickPickItem,
   ModelStatusResponse,
-  ModelTrainResponse,
 } from '../types/api';
 import { StockCard } from '../components/StockCard';
 import { QuickPickCard } from '../components/QuickPickCard';
@@ -27,11 +25,6 @@ import {
   Layers,
   ShieldCheck,
   Cpu,
-  CheckCircle2,
-  Sliders,
-  X,
-  AlertCircle,
-  Play,
   Clock,
 } from 'lucide-react';
 
@@ -58,14 +51,6 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
   // ML Alpha Engine state
   const [modelStatus, setModelStatus] = useState<ModelStatusResponse | null>(null);
   const [horizonDays, setHorizonDays] = useState<number>(90);
-  const [showTrainModal, setShowTrainModal] = useState<boolean>(false);
-  const [isTraining, setIsTraining] = useState<boolean>(false);
-  const [trainModelType, setTrainModelType] = useState<string>('lightgbm');
-  const [trainHorizonDays, setTrainHorizonDays] = useState<number>(90);
-  const [trainFeatureMode, setTrainFeatureMode] = useState<string>('pair_fund_mom');
-  const [trainCalibration, setTrainCalibration] = useState<string>('isotonic');
-  const [trainSuccessResult, setTrainSuccessResult] = useState<ModelTrainResponse | null>(null);
-  const [trainErrorMsg, setTrainErrorMsg] = useState<string | null>(null);
 
   // Interactive Capital Deployment Calculator state
   const [freshCapital, setFreshCapital] = useState<number>(100000);
@@ -106,31 +91,6 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
   useEffect(() => {
     loadData();
   }, [asof, viewMode, pickN, topN, horizonDays]);
-
-  const handleTrainModel = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    setIsTraining(true);
-    setTrainSuccessResult(null);
-    setTrainErrorMsg(null);
-    try {
-      const res = await trainModel({
-        model_type: trainModelType,
-        horizon_days: trainHorizonDays,
-        feature_mode: trainFeatureMode,
-        calibration_method: trainCalibration,
-        asof: asof,
-      });
-      setTrainSuccessResult(res);
-      setHorizonDays(trainHorizonDays);
-      const statusRes = await fetchModelStatus();
-      setModelStatus(statusRes);
-      await loadData();
-    } catch (err: any) {
-      setTrainErrorMsg(err.message || 'Model training failed');
-    } finally {
-      setIsTraining(false);
-    }
-  };
 
   // Extract unique sectors for filter
   const sectors = ['ALL', ...Array.from(new Set(recs.map((r) => r.sector)))];
@@ -294,18 +254,6 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
                 </button>
               ))}
             </div>
-
-            {/* Train / Retrain Action Button */}
-            <button
-              onClick={() => {
-                setTrainHorizonDays(horizonDays);
-                setShowTrainModal(true);
-              }}
-              className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-winsor-600 via-sky-600 to-emerald-500 hover:from-winsor-500 hover:to-emerald-400 text-white font-mono font-bold text-xs shadow-lg shadow-winsor-600/30 transition-all flex items-center space-x-2 cursor-pointer border border-sky-300/30 group"
-            >
-              <Sliders className="w-3.5 h-3.5 group-hover:rotate-45 transition-transform" />
-              <span>Train Alpha Model</span>
-            </button>
           </div>
         </div>
       </div>
@@ -719,176 +667,6 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
             >
               Switch to Baseline PIT Dataset (2024-03-31)
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* Interactive Alpha Model Training & Calibration Modal */}
-      {showTrainModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-          <div className="relative w-full max-w-2xl bg-[#090d18] border border-sky-500/30 rounded-3xl shadow-2xl overflow-hidden p-6 text-slate-200">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between pb-4 border-b border-white/[0.08]">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-winsor-700 via-sky-600 to-emerald-500 p-0.5 flex items-center justify-center">
-                  <div className="w-full h-full bg-[#070a14] rounded-[14px] flex items-center justify-center">
-                    <Cpu className="w-5 h-5 text-sky-400" />
-                  </div>
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-white font-mono">
-                    Train Point-in-Time Alpha Prediction Engine
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    Walk-forward cross-sectional training strictly prior to As-Of date (zero lookahead)
-                  </p>
-                </div>
-              </div>
-
-              <button
-                onClick={() => setShowTrainModal(false)}
-                className="w-8 h-8 rounded-xl bg-[#0e1322] hover:bg-white/[0.08] flex items-center justify-center text-slate-400 hover:text-white transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Form */}
-            <form onSubmit={handleTrainModel} className="space-y-4 pt-4 text-xs font-mono">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* 1. Algorithm Selection */}
-                <div className="space-y-1.5">
-                  <label className="text-slate-400 font-bold block">Model Algorithm:</label>
-                  <select
-                    value={trainModelType}
-                    onChange={(e) => setTrainModelType(e.target.value)}
-                    className="w-full bg-[#060810] border border-white/[0.08] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-sky-400"
-                  >
-                    <option value="lightgbm">Calibrated LightGBM Booster (Recommended)</option>
-                    <option value="logistic">Regularized Logistic Regression (Platt)</option>
-                    <option value="xgboost">XGBoost Classifier</option>
-                  </select>
-                </div>
-
-                {/* 2. Target Alpha Horizon */}
-                <div className="space-y-1.5">
-                  <label className="text-slate-400 font-bold block">Target Alpha Horizon:</label>
-                  <select
-                    value={trainHorizonDays}
-                    onChange={(e) => setTrainHorizonDays(Number(e.target.value))}
-                    className="w-full bg-[#060810] border border-white/[0.08] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-sky-400"
-                  >
-                    <option value={30}>30 Days (Tactical Momentum & Reversal)</option>
-                    <option value={90}>90 Days (Quarterly Fundamental Compounding)</option>
-                    <option value={180}>180 Days (Half-Year Cycle Outperformance)</option>
-                    <option value={252}>252 Days (1-Year Strategic Alpha)</option>
-                  </select>
-                </div>
-
-                {/* 3. Feature Set Selection */}
-                <div className="space-y-1.5">
-                  <label className="text-slate-400 font-bold block">Feature Architecture:</label>
-                  <select
-                    value={trainFeatureMode}
-                    onChange={(e) => setTrainFeatureMode(e.target.value)}
-                    className="w-full bg-[#060810] border border-white/[0.08] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-sky-400"
-                  >
-                    <option value="pair_fund_mom">Candidate 2: Fund + Momentum (Gate 8 Winner)</option>
-                    <option value="set_a">Candidate 1: Fundamentals Only (RoE, RoCE, D/E)</option>
-                    <option value="pair_fund_sent">Candidate 3: Fundamentals + Sentiment</option>
-                    <option value="all">Full 24 Point-in-Time Factors</option>
-                  </select>
-                </div>
-
-                {/* 4. Calibration Method */}
-                <div className="space-y-1.5">
-                  <label className="text-slate-400 font-bold block">Probability Calibration:</label>
-                  <select
-                    value={trainCalibration}
-                    onChange={(e) => setTrainCalibration(e.target.value)}
-                    className="w-full bg-[#060810] border border-white/[0.08] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-sky-400"
-                  >
-                    <option value="isotonic">Isotonic Regression (Non-parametric)</option>
-                    <option value="sigmoid">Platt Scaling (Sigmoid Calibrated)</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Status Feedback / Success / Error Message */}
-              {trainErrorMsg && (
-                <div className="p-3 bg-rose-950/60 border border-rose-500/40 rounded-xl text-rose-300 flex items-center space-x-2 text-xs">
-                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-                  <span>{trainErrorMsg}</span>
-                </div>
-              )}
-
-              {trainSuccessResult && (
-                <div className="p-4 bg-emerald-950/40 border border-emerald-500/30 rounded-2xl text-emerald-300 space-y-2">
-                  <div className="flex items-center space-x-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span className="font-bold">{trainSuccessResult.message}</span>
-                  </div>
-
-                  {/* Learned Feature Importances */}
-                  {trainSuccessResult.feature_importances && Object.keys(trainSuccessResult.feature_importances).length > 0 && (
-                    <div className="pt-2 border-t border-emerald-500/20 space-y-1.5">
-                      <span className="text-[11px] text-slate-400 uppercase font-bold block">
-                        Learned Feature Weights (Contribution to Alpha):
-                      </span>
-                      <div className="space-y-1">
-                        {Object.entries(trainSuccessResult.feature_importances)
-                          .sort((a, b) => b[1] - a[1])
-                          .slice(0, 5)
-                          .map(([feat, weight]) => (
-                            <div key={feat} className="flex items-center justify-between text-[11px]">
-                              <span className="text-slate-300 capitalize">{feat.replace(/_/g, ' ')}:</span>
-                              <div className="flex items-center space-x-2">
-                                <div className="w-28 h-1.5 bg-[#05070e] rounded-full overflow-hidden border border-white/[0.06]">
-                                  <div
-                                    className="h-full bg-gradient-to-r from-sky-400 to-emerald-400"
-                                    style={{ width: `${Math.round(weight * 100)}%` }}
-                                  />
-                                </div>
-                                <span className="font-bold text-white w-10 text-right">
-                                  {(weight * 100).toFixed(1)}%
-                                </span>
-                              </div>
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Action Buttons */}
-              <div className="pt-3 border-t border-white/[0.08] flex items-center justify-end space-x-3">
-                <button
-                  type="button"
-                  onClick={() => setShowTrainModal(false)}
-                  className="px-4 py-2 rounded-xl bg-[#0a0d18] hover:bg-white/[0.06] text-slate-400 hover:text-white transition-colors"
-                >
-                  Close
-                </button>
-                <button
-                  type="submit"
-                  disabled={isTraining}
-                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-winsor-600 via-sky-600 to-emerald-500 hover:from-winsor-500 hover:to-emerald-400 text-white font-bold transition-all shadow-lg flex items-center space-x-2 disabled:opacity-50"
-                >
-                  {isTraining ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                      <span>Training Model...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Play className="w-4 h-4 text-white" />
-                      <span>Start Point-in-Time Training</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}

@@ -6,14 +6,31 @@ import pytest
 from fastapi.testclient import TestClient
 
 from invst.api.app import create_app
-from invst.api.auth import get_master_password, verify_password
+from invst.api.auth import (
+    get_admin_email,
+    get_master_password,
+    hash_password,
+    init_users_table,
+    verify_password,
+)
 from invst.api.routes import get_db
+
 
 
 @pytest.fixture
 def auth_client(scoring_db: sqlite3.Connection):
     """Test client with db override and forced authentication enforcement."""
     app = create_app()
+
+    # Seed master admin (admin@arth.iq) into in-memory test database
+    init_users_table(scoring_db)
+    admin_email = get_admin_email()
+    p_hash = hash_password("arth")
+    scoring_db.execute(
+        "UPDATE users SET password_hash = ?, status = 'ACTIVE' WHERE LOWER(email) = LOWER(?)",
+        (p_hash, admin_email),
+    )
+    scoring_db.commit()
 
     def override_get_db():
         yield scoring_db
@@ -23,10 +40,20 @@ def auth_client(scoring_db: sqlite3.Connection):
         yield c
 
 
-def test_auth_password_verification():
-    assert verify_password("arth") is True
-    assert verify_password("wrong") is False
-    assert get_master_password() == "arth"
+def test_auth_password_verification(scoring_db: sqlite3.Connection):
+    init_users_table(scoring_db)
+    admin_email = get_admin_email()
+    p_hash = hash_password("arth")
+    scoring_db.execute(
+        "UPDATE users SET password_hash = ?, status = 'ACTIVE' WHERE LOWER(email) = LOWER(?)",
+        (p_hash, admin_email),
+    )
+    scoring_db.commit()
+
+    assert verify_password("arth", conn=scoring_db) is True
+    assert verify_password("wrong", conn=scoring_db) is False
+    assert get_master_password() == ""
+
 
 
 def test_login_success_and_verify(auth_client: TestClient):
@@ -62,7 +89,7 @@ def test_login_success_and_verify(auth_client: TestClient):
 def test_login_failure(auth_client: TestClient):
     resp = auth_client.post("/api/auth/login", json={"password": "wrong_password"})
     assert resp.status_code == 401
-    assert "Incorrect master password" in resp.json()["detail"]
+    assert "Incorrect administrator password" in resp.json()["detail"]
 
 
 def test_invalid_token_rejected(auth_client: TestClient):

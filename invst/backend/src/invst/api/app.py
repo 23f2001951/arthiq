@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
-from fastapi import FastAPI
+import logging
+
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from invst.api.routes import router as api_router
 from invst.config import get_project_root
@@ -28,6 +33,49 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Register global exception handlers
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        errors = exc.errors()
+        error_msgs = []
+        for err in errors:
+            loc = " -> ".join(str(l) for l in err.get("loc", []) if l != "body")
+            msg = err.get("msg", "Invalid value")
+            error_msgs.append(f"{loc}: {msg}" if loc else msg)
+        detail = "; ".join(error_msgs) if error_msgs else "Validation failed for request data."
+        return JSONResponse(
+            status_code=422,
+            content={"detail": detail, "error_type": "ValidationError", "errors": errors},
+        )
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+        detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": detail, "status_code": exc.status_code, "error_type": "HTTPException"},
+        )
+
+    @app.exception_handler(Exception)
+    async def general_exception_handler(request: Request, exc: Exception):
+        logger = logging.getLogger("invst.api")
+        logger.exception("Unhandled server exception at %s %s: %s", request.method, request.url.path, exc)
+        exc_name = type(exc).__name__
+        exc_msg = str(exc).strip()
+        if "operationalerror" in exc_name.lower() or "database" in exc_name.lower():
+            detail = f"Database operation error: {exc_msg or 'Failed to execute query.'}"
+        elif "connection" in exc_name.lower():
+            detail = f"Connection error: {exc_msg or 'Service is temporarily unreachable.'}"
+        elif exc_msg:
+            detail = f"Server error ({exc_name}): {exc_msg}"
+        else:
+            detail = f"Internal server error ({exc_name}). Please try again."
+
+        return JSONResponse(
+            status_code=500,
+            content={"detail": detail, "error_type": exc_name},
+        )
 
     # Register API routes
     app.include_router(api_router)

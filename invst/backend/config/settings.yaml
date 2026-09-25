@@ -62,6 +62,7 @@ logging:
 
 auth:
   enabled: true
-  password: "arth"  # Overridable via ARTH_IQ_PASSWORD environment variable
+  admin_email: "admin@arth.iq"
   session_expiry_hours: 72
+
 

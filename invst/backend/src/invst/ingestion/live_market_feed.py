@@ -477,3 +477,119 @@ def ingest_live_ticker_to_db(
     conn.commit()
     logger.info(f"Successfully ingested live snapshot for {clean_sym} (Price: ₹{price:.2f})")
     return True
+
+
+TICKER_TAPE_CACHE: dict[str, Any] = {
+    "timestamp": 0.0,
+    "data": [],
+}
+
+TICKER_ITEMS_DEF: list[dict[str, Any]] = [
+    {"symbol": "^NSEI", "name": "NIFTY 50", "category": "INDEX", "prefix": "", "db_symbol": "NIFTY50", "default_price": 24835.40, "default_change": 0.48},
+    {"symbol": "^BSESN", "name": "SENSEX", "category": "INDEX", "prefix": "", "db_symbol": "SENSEX", "default_price": 81382.10, "default_change": 0.52},
+    {"symbol": "^NSEBANK", "name": "BANK NIFTY", "category": "INDEX", "prefix": "", "db_symbol": "BANKNIFTY", "default_price": 51240.85, "default_change": 0.31},
+    {"symbol": "^INDIAVIX", "name": "INDIA VIX", "category": "INDEX", "prefix": "", "db_symbol": "INDIAVIX", "default_price": 12.84, "default_change": -3.12},
+    {"symbol": "USDINR=X", "name": "USD/INR", "category": "CURRENCY", "prefix": "", "db_symbol": "USDINR", "default_price": 83.52, "default_change": 0.04},
+    {"symbol": "RELIANCE.NS", "name": "RELIANCE", "category": "EQUITY", "prefix": "₹", "db_symbol": "RELIANCE", "default_price": 1247.40, "default_change": 1.24},
+    {"symbol": "TCS.NS", "name": "TCS", "category": "EQUITY", "prefix": "₹", "db_symbol": "TCS", "default_price": 2082.00, "default_change": -0.24},
+    {"symbol": "HDFCBANK.NS", "name": "HDFCBANK", "category": "EQUITY", "prefix": "₹", "db_symbol": "HDFCBANK", "default_price": 728.90, "default_change": -1.43},
+    {"symbol": "INFY.NS", "name": "INFY", "category": "EQUITY", "prefix": "₹", "db_symbol": "INFY", "default_price": 1014.50, "default_change": -2.31},
+    {"symbol": "ICICIBANK.NS", "name": "ICICIBANK", "category": "EQUITY", "prefix": "₹", "db_symbol": "ICICIBANK", "default_price": 1334.50, "default_change": 0.85},
+    {"symbol": "BHARTIARTL.NS", "name": "BHARTIARTL", "category": "EQUITY", "prefix": "₹", "db_symbol": "BHARTIARTL", "default_price": 1650.00, "default_change": 0.75},
+    {"symbol": "ITC.NS", "name": "ITC", "category": "EQUITY", "prefix": "₹", "db_symbol": "ITC", "default_price": 485.50, "default_change": 0.40},
+    {"symbol": "SBIN.NS", "name": "SBIN", "category": "EQUITY", "prefix": "₹", "db_symbol": "SBIN", "default_price": 785.20, "default_change": 0.65},
+    {"symbol": "TATAMOTORS.NS", "name": "TATAMOTORS", "category": "EQUITY", "prefix": "₹", "db_symbol": "TATAMOTORS", "default_price": 940.00, "default_change": 1.10},
+    {"symbol": "GOLDBEES.NS", "name": "GOLD BEES", "category": "ETF", "prefix": "₹", "db_symbol": "GOLDBEES", "default_price": 123.48, "default_change": 0.25},
+    {"symbol": "SILVERBEES.NS", "name": "SILVER BEES", "category": "ETF", "prefix": "₹", "db_symbol": "SILVERBEES", "default_price": 162.55, "default_change": 0.45},
+    {"symbol": "NIFTYBEES.NS", "name": "NIFTY BEES", "category": "ETF", "prefix": "₹", "db_symbol": "NIFTYBEES", "default_price": 264.13, "default_change": 0.05},
+]
+
+
+def fetch_live_ticker_tape(
+    conn: sqlite3.Connection | None = None,
+    fetch_live: bool = True,
+    cache_ttl_sec: float = 15.0,
+) -> list[dict[str, Any]]:
+    """Fetch real-time ticker tape quotes for NSE/BSE stocks, indices, and ETFs."""
+    import time
+    from datetime import datetime, timezone
+
+    now = time.time()
+    if TICKER_TAPE_CACHE["data"] and (now - TICKER_TAPE_CACHE["timestamp"]) < cache_ttl_sec:
+        return TICKER_TAPE_CACHE["data"]
+
+    results: list[dict[str, Any]] = []
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Preload latest DB prices if connection is provided
+    db_price_map: dict[str, tuple[float, float]] = {}
+    if conn is not None:
+        try:
+            cur = conn.cursor()
+            for item in TICKER_ITEMS_DEF:
+                db_sym = item["db_symbol"]
+                cur.execute(
+                    "SELECT close FROM daily_prices WHERE symbol = ? ORDER BY trade_date DESC LIMIT 2",
+                    (db_sym,),
+                )
+                rows = cur.fetchall()
+                if rows:
+                    curr_p = float(rows[0][0])
+                    prev_p = float(rows[1][0]) if len(rows) > 1 else curr_p
+                    db_price_map[db_sym] = (curr_p, prev_p)
+        except Exception as e:
+            logger.debug(f"DB price preload for ticker tape failed: {e}")
+
+    for item in TICKER_ITEMS_DEF:
+        sym = item["symbol"]
+        name = item["name"]
+        prefix = item["prefix"]
+        price: float = 0.0
+        change_pct: float = 0.0
+        fetched_live = False
+
+        if fetch_live and yf is not None:
+            try:
+                t = yf.Ticker(sym)
+                fast_info = getattr(t, "fast_info", None)
+                if fast_info:
+                    lp = _safe_float(getattr(fast_info, "last_price", None), 0.0)
+                    pc = _safe_float(getattr(fast_info, "previous_close", None), lp)
+                    if lp > 0:
+                        price = round(lp, 2)
+                        change_pct = round(((lp - pc) / pc) * 100.0, 2) if pc > 0 else 0.0
+                        fetched_live = True
+            except Exception:
+                pass
+
+        if not fetched_live:
+            # Fallback to local database prices
+            db_sym = item["db_symbol"]
+            if db_sym in db_price_map:
+                curr_p, prev_p = db_price_map[db_sym]
+                price = round(curr_p, 2)
+                change_pct = round(((curr_p - prev_p) / prev_p) * 100.0, 2) if prev_p > 0 else 0.0
+            else:
+                price = item["default_price"]
+                change_pct = item["default_change"]
+
+        is_pos = change_pct >= 0
+        price_str = f"{prefix}{price:,.2f}" if price >= 100 else f"{prefix}{price:.2f}"
+        change_str = f"+{change_pct:.2f}%" if change_pct >= 0 else f"{change_pct:.2f}%"
+
+        results.append({
+            "symbol": name,
+            "raw_symbol": sym,
+            "price": price_str,
+            "price_val": price,
+            "change": change_str,
+            "change_pct": change_pct,
+            "isPositive": is_pos,
+            "is_positive": is_pos,
+            "category": item["category"],
+            "last_updated": now_iso,
+        })
+
+    TICKER_TAPE_CACHE["timestamp"] = now
+    TICKER_TAPE_CACHE["data"] = results
+    return results

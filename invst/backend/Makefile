@@ -42,6 +42,9 @@ format:
 migrate:
 	python3 db/migrate.py
 
+migrate-neon:
+	python3 -m invst.db.migrate_to_neon
+
 ingest:
 	python3 -m invst.cli ingest
 

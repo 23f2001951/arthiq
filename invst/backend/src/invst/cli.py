@@ -28,14 +28,11 @@ from invst.scoring.composite import compute_composite_scores, select_shortlist_w
 logger = logging.getLogger("invst.cli")
 
 
-def get_db_connection(db_path: str | None = None) -> sqlite3.Connection:
-    """Open a connection to the SQLite database with foreign keys and WAL mode."""
-    cfg = get_config()
-    target_path = db_path or str(cfg.database.path)
-    conn = sqlite3.connect(target_path)
-    conn.execute("PRAGMA journal_mode = WAL;")
-    conn.execute("PRAGMA foreign_keys = ON;")
-    return conn
+def get_db_connection(db_path: str | None = None) -> Any:
+    """Open a unified database connection supporting Neon PostgreSQL and SQLite."""
+    from invst.db.engine import get_db_connection as _get_conn
+    return _get_conn(db_path=db_path)
+
 
 
 def cmd_ingest(args: argparse.Namespace) -> int:

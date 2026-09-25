@@ -163,154 +163,466 @@ class PortfolioHealthReport:
         return asdict(self)
 
 
+def get_default_user_id(conn: sqlite3.Connection) -> int:
+    """Return default user ID: 11 (itsmandeepbeniwal@gmail.com) if present, else first user ID."""
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM users WHERE id = 11")
+        if cur.fetchone():
+            return 11
+        cur.execute("SELECT id FROM users ORDER BY id ASC LIMIT 1")
+        row = cur.fetchone()
+        return row[0] if row else 11
+    except Exception:
+        return 11
+
+
 def init_portfolio_db(conn: sqlite3.Connection) -> None:
-    """Ensure user_portfolio_holdings, user_portfolios, and portfolio_holdings tables exist."""
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS user_portfolio_holdings (
-            symbol TEXT PRIMARY KEY,
-            shares REAL NOT NULL,
-            buy_price REAL NOT NULL,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-        """
-    )
+    """Ensure separate user_portfolios, user_portfolio_holdings, user_target_lists, and user_target_list_items tables exist."""
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS user_portfolios (
-            id TEXT PRIMARY KEY,
+            id TEXT NOT NULL,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             name TEXT NOT NULL,
             description TEXT DEFAULT '',
-            portfolio_type TEXT DEFAULT 'PORTFOLIO',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id, user_id)
         );
         """
     )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_user_portfolios_user ON user_portfolios(user_id);")
+
     conn.execute(
         """
-        CREATE TABLE IF NOT EXISTS portfolio_holdings (
+        CREATE TABLE IF NOT EXISTS user_portfolio_holdings (
             portfolio_id TEXT NOT NULL,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             symbol TEXT NOT NULL,
-            shares REAL NOT NULL,
-            buy_price REAL NOT NULL,
+            shares REAL NOT NULL DEFAULT 0.0,
+            buy_price REAL NOT NULL DEFAULT 0.0,
             target_price REAL,
             notes TEXT DEFAULT '',
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (portfolio_id, symbol),
-            FOREIGN KEY (portfolio_id) REFERENCES user_portfolios(id) ON DELETE CASCADE
+            PRIMARY KEY (portfolio_id, user_id, symbol),
+            FOREIGN KEY (portfolio_id, user_id) REFERENCES user_portfolios(id, user_id) ON DELETE CASCADE
         );
         """
     )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_user_holdings_user ON user_portfolio_holdings(user_id);")
 
-    # Ensure default portfolio exists
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_target_lists (
+            id TEXT NOT NULL,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id, user_id)
+        );
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_user_target_lists_user ON user_target_lists(user_id);")
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_target_list_items (
+            list_id TEXT NOT NULL,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            symbol TEXT NOT NULL,
+            shares REAL NOT NULL DEFAULT 0.0,
+            buy_price REAL NOT NULL DEFAULT 0.0,
+            target_price REAL,
+            notes TEXT DEFAULT '',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (list_id, user_id, symbol),
+            FOREIGN KEY (list_id, user_id) REFERENCES user_target_lists(id, user_id) ON DELETE CASCADE
+        );
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_target_list_items_user ON user_target_list_items(user_id);")
+
+    # Migration from legacy user_portfolios if user_id is missing
     cur = conn.cursor()
-    cur.execute("SELECT id FROM user_portfolios WHERE id = 'default'")
-    if not cur.fetchone():
+    cur.execute("PRAGMA table_info(user_portfolios)")
+    cols = [c[1] for c in cur.fetchall()]
+    if "user_id" not in cols:
+        cur.execute("SELECT id, name, description, created_at, updated_at FROM user_portfolios")
+        old_ports = cur.fetchall()
         cur.execute(
             """
-            INSERT INTO user_portfolios (id, name, description, portfolio_type)
-            VALUES ('default', 'Main Portfolio', 'Primary core investment portfolio', 'PORTFOLIO')
+            CREATE TABLE user_portfolios_temp (
+                id TEXT NOT NULL,
+                user_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT DEFAULT '',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (id, user_id)
+            )
             """
         )
-        cur.execute("SELECT symbol, shares, buy_price FROM user_portfolio_holdings")
-        rows = cur.fetchall()
-        for r in rows:
+        for p in old_ports:
             cur.execute(
-                """
-                INSERT OR IGNORE INTO portfolio_holdings (portfolio_id, symbol, shares, buy_price)
-                VALUES ('default', ?, ?, ?)
-                """,
-                (r[0], r[1], r[2]),
+                "INSERT OR REPLACE INTO user_portfolios_temp (id, user_id, name, description, created_at, updated_at) VALUES (?, 11, ?, ?, ?, ?)",
+                p,
+            )
+        cur.execute("DROP TABLE user_portfolios")
+        cur.execute("ALTER TABLE user_portfolios_temp RENAME TO user_portfolios")
+        conn.commit()
+
+def ensure_user_portfolio_and_target_list(conn: sqlite3.Connection, user_id: int) -> None:
+    """Ensure User 11 has their seeded holdings and target list, and any user has their default portfolio."""
+    cur = conn.cursor()
+    # Check if users table exists and if user_id exists in users table
+    try:
+        cur.execute("SELECT id FROM users WHERE id = ?", (user_id,))
+        if not cur.fetchone():
+            return
+    except Exception:
+        pass
+
+    try:
+        # 1. Default Portfolio
+        cur.execute("SELECT id FROM user_portfolios WHERE id = 'default' AND user_id = ?", (user_id,))
+        if not cur.fetchone():
+            cur.execute(
+                "INSERT OR IGNORE INTO user_portfolios (id, user_id, name, description) VALUES ('default', ?, 'Main Portfolio', 'Primary core investment portfolio')",
+                (user_id,),
+            )
+            if user_id == 11:
+                cur.executemany(
+                    "INSERT OR REPLACE INTO user_portfolio_holdings (portfolio_id, user_id, symbol, shares, buy_price, notes) VALUES ('default', ?, ?, ?, ?, '')",
+                    [
+                        (user_id, "GOLDIETF", 19.0, 110.02),
+                        (user_id, "SILVERIETF", 25.0, 162.55),
+                        (user_id, "NIFTYBEES", 8.0, 261.40),
+                    ],
+                )
+
+        # 2. Tactical Dip Target List - ONLY for User 11
+        if user_id == 11:
+            cur.execute("SELECT id FROM user_target_lists WHERE id = 'targetlist_dips' AND user_id = ?", (user_id,))
+            if not cur.fetchone():
+                cur.execute(
+                    "INSERT OR IGNORE INTO user_target_lists (id, user_id, name, description) VALUES ('targetlist_dips', ?, 'Tactical Dip Target List', 'High-conviction ideas waiting for dip accumulation limit')",
+                    (user_id,),
+                )
+                cur.executemany(
+                    "INSERT OR REPLACE INTO user_target_list_items (list_id, user_id, symbol, shares, buy_price, target_price, notes) VALUES ('targetlist_dips', ?, ?, ?, ?, ?, ?)",
+                    [
+                        (user_id, "KSCL", 10.0, 768.8, 768.8, "🟢 STRONG BUY (68/100). Dip Target: ₹768.8 (--1.7%). High-conviction core compounder: High business quality (BQS: 63.7/100) paired with an attractive valuation margin of safety (Valuation Score: 60.0/100)."),
+                        (user_id, "IDBI", 10.0, 77.7, 77.7, "🟢 STRONG BUY (75/100). Dip Target: ₹77.7 (--5.9%). High-conviction core compounder: High business quality (BQS: 63.7/100) paired with an attractive valuation margin of safety (Valuation Score: 80.0/100)."),
+                        (user_id, "IDFCFIRSTB", 10.0, 77.4, 77.4, "🔵 TACTICAL BUY (65/100). Dip Target: ₹77.4 (--7.6%). Tactical value / mean-reversion opportunity: Depressed multiple (Valuation Score: 62.0/100) creates favorable asymmetric upside to fair value."),
+                    ],
+                )
+        conn.commit()
+    except Exception as exc:
+        logger.debug("Skipping ensure_user_portfolio_and_target_list for user %s: %s", user_id, exc)
+
+
+def init_portfolio_db(conn: sqlite3.Connection) -> None:
+    """Ensure separate user_portfolios, user_portfolio_holdings, user_target_lists, and user_target_list_items tables exist."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_portfolios (
+            id TEXT NOT NULL,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id, user_id)
+        );
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_user_portfolios_user ON user_portfolios(user_id);")
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_portfolio_holdings (
+            portfolio_id TEXT NOT NULL,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            symbol TEXT NOT NULL,
+            shares REAL NOT NULL DEFAULT 0.0,
+            buy_price REAL NOT NULL DEFAULT 0.0,
+            target_price REAL,
+            notes TEXT DEFAULT '',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (portfolio_id, user_id, symbol),
+            FOREIGN KEY (portfolio_id, user_id) REFERENCES user_portfolios(id, user_id) ON DELETE CASCADE
+        );
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_user_holdings_user ON user_portfolio_holdings(user_id);")
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_target_lists (
+            id TEXT NOT NULL,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id, user_id)
+        );
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_user_target_lists_user ON user_target_lists(user_id);")
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_target_list_items (
+            list_id TEXT NOT NULL,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            symbol TEXT NOT NULL,
+            shares REAL NOT NULL DEFAULT 0.0,
+            buy_price REAL NOT NULL DEFAULT 0.0,
+            target_price REAL,
+            notes TEXT DEFAULT '',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (list_id, user_id, symbol),
+            FOREIGN KEY (list_id, user_id) REFERENCES user_target_lists(id, user_id) ON DELETE CASCADE
+        );
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_target_list_items_user ON user_target_list_items(user_id);")
+
+    # Ensure default data for all users currently in database
+    def_uid = get_default_user_id(conn)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM users")
+        u_rows = cur.fetchall()
+        if u_rows:
+            for (u_id,) in u_rows:
+                ensure_user_portfolio_and_target_list(conn, u_id)
+        else:
+            ensure_user_portfolio_and_target_list(conn, def_uid)
+    except Exception:
+        ensure_user_portfolio_and_target_list(conn, def_uid)
+
+
+def list_portfolios(
+    conn: sqlite3.Connection,
+    portfolio_type: str | None = None,
+    user_id: int | None = None,
+) -> list[dict[str, Any]]:
+    """List all portfolios and target lists with holdings count for a specific user."""
+    init_portfolio_db(conn)
+    uid = user_id if user_id is not None else get_default_user_id(conn)
+    ensure_user_portfolio_and_target_list(conn, uid)
+    cur = conn.cursor()
+    results = []
+
+    type_filter = portfolio_type.strip().upper() if portfolio_type else None
+
+    # 1. User Portfolios (Separate Table)
+    if type_filter is None or type_filter in ("PORTFOLIO", "PORTFOLIOS"):
+        cur.execute(
+            """
+            SELECT p.id, p.name, p.description, 'PORTFOLIO' as portfolio_type, p.created_at, p.updated_at,
+                   COUNT(h.symbol) as holdings_count
+            FROM user_portfolios p
+            LEFT JOIN user_portfolio_holdings h ON p.id = h.portfolio_id AND p.user_id = h.user_id
+            WHERE p.user_id = ?
+            GROUP BY p.id, p.user_id
+            ORDER BY CASE WHEN p.id = 'default' THEN 0 ELSE 1 END, p.created_at ASC
+            """,
+            (uid,),
+        )
+        for r in cur.fetchall():
+            results.append({
+                "id": r[0],
+                "name": r[1],
+                "description": r[2] or "",
+                "portfolio_type": "PORTFOLIO",
+                "created_at": str(r[4] or ""),
+                "updated_at": str(r[5] or ""),
+                "holdings_count": int(r[6] or 0),
+            })
+
+    # 2. User Target Lists (Separate Table)
+    if type_filter is None or type_filter in ("TARGETLIST", "TARGET_LIST", "TARGETLISTS", "TARGET_LISTS"):
+        cur.execute(
+            """
+            SELECT t.id, t.name, t.description, 'TARGETLIST' as portfolio_type, t.created_at, t.updated_at,
+                   COUNT(i.symbol) as holdings_count
+            FROM user_target_lists t
+            LEFT JOIN user_target_list_items i ON t.id = i.list_id AND t.user_id = i.user_id
+            WHERE t.user_id = ?
+            GROUP BY t.id, t.user_id
+            ORDER BY CASE WHEN t.id = 'targetlist_dips' THEN 0 ELSE 1 END, t.created_at ASC
+            """,
+            (uid,),
+        )
+        for r in cur.fetchall():
+            results.append({
+                "id": r[0],
+                "name": r[1],
+                "description": r[2] or "",
+                "portfolio_type": "TARGETLIST",
+                "created_at": str(r[4] or ""),
+                "updated_at": str(r[5] or ""),
+                "holdings_count": int(r[6] or 0),
+            })
+
+    return results
+
+
+def get_portfolio(
+    conn: sqlite3.Connection,
+    portfolio_id: str,
+    user_id: int | None = None,
+) -> UserPortfolio | None:
+    """Retrieve portfolio or target list metadata and holdings for specific user."""
+    init_portfolio_db(conn)
+    uid = user_id if user_id is not None else get_default_user_id(conn)
+    if portfolio_id == "default" or (portfolio_id == "targetlist_dips" and uid == 11):
+        ensure_user_portfolio_and_target_list(conn, uid)
+    cur = conn.cursor()
+
+    # 1. Check user_target_lists first if ID starts with targetlist or exists in user_target_lists
+    cur.execute(
+        "SELECT id, name, description, created_at, updated_at FROM user_target_lists WHERE id = ? AND user_id = ?",
+        (portfolio_id, uid),
+    )
+    t_row = cur.fetchone()
+    if t_row:
+        cur.execute(
+            """
+            SELECT symbol, shares, buy_price, target_price, notes
+            FROM user_target_list_items
+            WHERE list_id = ? AND user_id = ?
+            ORDER BY symbol ASC
+            """,
+            (portfolio_id, uid),
+        )
+        h_rows = cur.fetchall()
+        holdings = [
+            UserHolding(
+                symbol=hr[0],
+                shares=float(hr[1]),
+                buy_price=float(hr[2]),
+                target_price=float(hr[3]) if hr[3] is not None else None,
+                notes=hr[4] or "",
+            )
+            for hr in h_rows
+        ]
+        return UserPortfolio(
+            id=t_row[0],
+            name=t_row[1],
+            description=t_row[2] or "",
+            portfolio_type="TARGETLIST",
+            holdings=holdings,
+            created_at=str(t_row[3] or ""),
+            updated_at=str(t_row[4] or ""),
+        )
+
+    # 2. Check user_portfolios
+    cur.execute(
+        "SELECT id, name, description, created_at, updated_at FROM user_portfolios WHERE id = ? AND user_id = ?",
+        (portfolio_id, uid),
+    )
+    p_row = cur.fetchone()
+    if p_row:
+        cur.execute(
+            """
+            SELECT symbol, shares, buy_price, target_price, notes
+            FROM user_portfolio_holdings
+            WHERE portfolio_id = ? AND user_id = ?
+            ORDER BY symbol ASC
+            """,
+            (portfolio_id, uid),
+        )
+        h_rows = cur.fetchall()
+        holdings = [
+            UserHolding(
+                symbol=hr[0],
+                shares=float(hr[1]),
+                buy_price=float(hr[2]),
+                target_price=float(hr[3]) if hr[3] is not None else None,
+                notes=hr[4] or "",
+            )
+            for hr in h_rows
+        ]
+        return UserPortfolio(
+            id=p_row[0],
+            name=p_row[1],
+            description=p_row[2] or "",
+            portfolio_type="PORTFOLIO",
+            holdings=holdings,
+            created_at=str(p_row[3] or ""),
+            updated_at=str(p_row[4] or ""),
+        )
+
+    # 3. Fallback without user_id constraint (ONLY when user_id is not explicitly specified)
+    if user_id is None:
+        cur.execute(
+            "SELECT id, name, description, created_at, updated_at FROM user_target_lists WHERE id = ? LIMIT 1",
+            (portfolio_id,),
+        )
+        fb_t = cur.fetchone()
+        if fb_t:
+            cur.execute(
+                "SELECT symbol, shares, buy_price, target_price, notes FROM user_target_list_items WHERE list_id = ? ORDER BY symbol ASC",
+                (portfolio_id,),
+            )
+            h_rows = cur.fetchall()
+            return UserPortfolio(
+                id=fb_t[0],
+                name=fb_t[1],
+                description=fb_t[2] or "",
+                portfolio_type="TARGETLIST",
+                holdings=[
+                    UserHolding(
+                        symbol=hr[0],
+                        shares=float(hr[1]),
+                        buy_price=float(hr[2]),
+                        target_price=float(hr[3]) if hr[3] is not None else None,
+                        notes=hr[4] or "",
+                    )
+                    for hr in h_rows
+                ],
+                created_at=str(fb_t[3] or ""),
+                updated_at=str(fb_t[4] or ""),
             )
 
-    # Ensure default target list exists
-    cur.execute("SELECT id FROM user_portfolios WHERE portfolio_type = 'TARGETLIST'")
-    if not cur.fetchone():
         cur.execute(
-            """
-            INSERT OR IGNORE INTO user_portfolios (id, name, description, portfolio_type)
-            VALUES ('targetlist_dips', 'Tactical Dip Target List', 'High-conviction ideas waiting for dip accumulation limit', 'TARGETLIST')
-            """
+            "SELECT id, name, description, created_at, updated_at FROM user_portfolios WHERE id = ? LIMIT 1",
+            (portfolio_id,),
         )
-    conn.commit()
+        fb_p = cur.fetchone()
+        if fb_p:
+            cur.execute(
+                "SELECT symbol, shares, buy_price, target_price, notes FROM user_portfolio_holdings WHERE portfolio_id = ? ORDER BY symbol ASC",
+                (portfolio_id,),
+            )
+            h_rows = cur.fetchall()
+            return UserPortfolio(
+                id=fb_p[0],
+                name=fb_p[1],
+                description=fb_p[2] or "",
+                portfolio_type="PORTFOLIO",
+                holdings=[
+                    UserHolding(
+                        symbol=hr[0],
+                        shares=float(hr[1]),
+                        buy_price=float(hr[2]),
+                        target_price=float(hr[3]) if hr[3] is not None else None,
+                        notes=hr[4] or "",
+                    )
+                    for hr in h_rows
+                ],
+                created_at=str(fb_p[3] or ""),
+                updated_at=str(fb_p[4] or ""),
+            )
 
-
-def list_portfolios(conn: sqlite3.Connection, portfolio_type: str | None = None) -> list[dict[str, Any]]:
-    """List all portfolios and target lists with holdings count, optionally filtered by portfolio_type."""
-    init_portfolio_db(conn)
-    cur = conn.cursor()
-    query = """
-        SELECT p.id, p.name, p.description, p.portfolio_type, p.created_at, p.updated_at,
-               COUNT(h.symbol) as holdings_count
-        FROM user_portfolios p
-        LEFT JOIN portfolio_holdings h ON p.id = h.portfolio_id
-    """
-    params = []
-    if portfolio_type:
-        query += " WHERE UPPER(p.portfolio_type) = ?"
-        params.append(portfolio_type.strip().upper())
-    query += """
-        GROUP BY p.id
-        ORDER BY CASE WHEN p.id = 'default' THEN 0 ELSE 1 END, p.created_at ASC
-    """
-    cur.execute(query, tuple(params))
-    rows = cur.fetchall()
-    return [
-        {
-            "id": r[0],
-            "name": r[1],
-            "description": r[2] or "",
-            "portfolio_type": r[3] or "PORTFOLIO",
-            "created_at": str(r[4] or ""),
-            "updated_at": str(r[5] or ""),
-            "holdings_count": int(r[6] or 0),
-        }
-        for r in rows
-    ]
-
-
-def get_portfolio(conn: sqlite3.Connection, portfolio_id: str) -> UserPortfolio | None:
-    """Retrieve portfolio metadata and holdings."""
-    init_portfolio_db(conn)
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT id, name, description, portfolio_type, created_at, updated_at FROM user_portfolios WHERE id = ?",
-        (portfolio_id,),
-    )
-    row = cur.fetchone()
-    if not row:
-        return None
-
-    cur.execute(
-        """
-        SELECT symbol, shares, buy_price, target_price, notes
-        FROM portfolio_holdings
-        WHERE portfolio_id = ?
-        ORDER BY symbol ASC
-        """,
-        (portfolio_id,),
-    )
-    h_rows = cur.fetchall()
-    holdings = [
-        UserHolding(
-            symbol=hr[0],
-            shares=float(hr[1]),
-            buy_price=float(hr[2]),
-            target_price=float(hr[3]) if hr[3] is not None else None,
-            notes=hr[4] or "",
-        )
-        for hr in h_rows
-    ]
-    return UserPortfolio(
-        id=row[0],
-        name=row[1],
-        description=row[2] or "",
-        portfolio_type=row[3] or "PORTFOLIO",
-        holdings=holdings,
-        created_at=str(row[4] or ""),
-        updated_at=str(row[5] or ""),
-    )
+    return None
 
 
 def create_portfolio(
@@ -319,36 +631,63 @@ def create_portfolio(
     description: str = "",
     portfolio_type: str = "PORTFOLIO",
     initial_holdings: list[UserHolding] | None = None,
+    user_id: int | None = None,
+    portfolio_id: str | None = None,
 ) -> UserPortfolio:
-    """Create a new portfolio or target list."""
+    """Create a new portfolio or target list for specific user."""
     import re
     import uuid
 
     init_portfolio_db(conn)
+    uid = user_id if user_id is not None else get_default_user_id(conn)
     base_slug = re.sub(r"[^a-zA-Z0-9_]+", "_", name.strip().lower()).strip("_")
-    portfolio_id = f"{base_slug}_{uuid.uuid4().hex[:6]}" if base_slug else f"port_{uuid.uuid4().hex[:8]}"
+    is_targetlist = portfolio_type.strip().upper() in ("TARGETLIST", "TARGET_LIST", "TARGETLISTS", "TARGET_LISTS")
+    prefix = "targetlist" if is_targetlist else "port"
+    if not portfolio_id:
+        portfolio_id = f"{prefix}_{base_slug}_{uuid.uuid4().hex[:6]}" if base_slug else f"{prefix}_{uuid.uuid4().hex[:8]}"
 
     cur = conn.cursor()
-    cur.execute(
-        """
-        INSERT INTO user_portfolios (id, name, description, portfolio_type, created_at, updated_at)
-        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        """,
-        (portfolio_id, name.strip(), description.strip(), portfolio_type.upper()),
-    )
-    if initial_holdings:
-        cur.executemany(
+    if is_targetlist:
+        cur.execute(
             """
-            INSERT OR REPLACE INTO portfolio_holdings (portfolio_id, symbol, shares, buy_price, target_price, notes, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            INSERT OR REPLACE INTO user_target_lists (id, user_id, name, description, created_at, updated_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             """,
-            [
-                (portfolio_id, h.symbol.strip().upper(), h.shares, h.buy_price, h.target_price, h.notes)
-                for h in initial_holdings
-            ],
+            (portfolio_id, uid, name.strip(), description.strip()),
         )
+        if initial_holdings:
+            cur.executemany(
+                """
+                INSERT OR REPLACE INTO user_target_list_items (list_id, user_id, symbol, shares, buy_price, target_price, notes, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+                [
+                    (portfolio_id, uid, h.symbol.strip().upper(), h.shares, h.buy_price, h.target_price, h.notes)
+                    for h in initial_holdings
+                ],
+            )
+    else:
+        cur.execute(
+            """
+            INSERT OR REPLACE INTO user_portfolios (id, user_id, name, description, created_at, updated_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """,
+            (portfolio_id, uid, name.strip(), description.strip()),
+        )
+        if initial_holdings:
+            cur.executemany(
+                """
+                INSERT OR REPLACE INTO user_portfolio_holdings (portfolio_id, user_id, symbol, shares, buy_price, target_price, notes, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+                [
+                    (portfolio_id, uid, h.symbol.strip().upper(), h.shares, h.buy_price, h.target_price, h.notes)
+                    for h in initial_holdings
+                ],
+            )
+
     conn.commit()
-    res = get_portfolio(conn, portfolio_id)
+    res = get_portfolio(conn, portfolio_id, user_id=uid)
     assert res is not None
     return res
 
@@ -360,107 +699,148 @@ def update_portfolio(
     description: str | None = None,
     portfolio_type: str | None = None,
     holdings: list[UserHolding] | None = None,
+    user_id: int | None = None,
 ) -> UserPortfolio | None:
-    """Update portfolio metadata and/or replace holdings."""
+    """Update portfolio metadata and/or replace holdings for specific user."""
     init_portfolio_db(conn)
-    p = get_portfolio(conn, portfolio_id)
+    uid = user_id if user_id is not None else get_default_user_id(conn)
+    if portfolio_id in ("default", "targetlist_dips"):
+        ensure_user_portfolio_and_target_list(conn, uid)
+    p = get_portfolio(conn, portfolio_id, user_id=uid)
     if not p:
         return None
 
     cur = conn.cursor()
     new_name = name.strip() if name is not None else p.name
     new_desc = description.strip() if description is not None else p.description
-    new_type = portfolio_type.upper() if portfolio_type is not None else p.portfolio_type
+    is_targetlist = p.portfolio_type in ("TARGETLIST", "TARGET_LIST")
 
-    cur.execute(
-        """
-        UPDATE user_portfolios
-        SET name = ?, description = ?, portfolio_type = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-        """,
-        (new_name, new_desc, new_type, portfolio_id),
-    )
-    if holdings is not None:
-        cur.execute("DELETE FROM portfolio_holdings WHERE portfolio_id = ?", (portfolio_id,))
-        cur.executemany(
-            """
-            INSERT INTO portfolio_holdings (portfolio_id, symbol, shares, buy_price, target_price, notes, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """,
-            [
-                (portfolio_id, h.symbol.strip().upper(), h.shares, h.buy_price, h.target_price, h.notes)
-                for h in holdings
-            ],
+    if is_targetlist:
+        cur.execute(
+            "UPDATE user_target_lists SET name = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?",
+            (new_name, new_desc, portfolio_id, uid),
         )
-        if portfolio_id == "default":
-            cur.execute("DELETE FROM user_portfolio_holdings")
-            cur.executemany(
-                """
-                INSERT INTO user_portfolio_holdings (symbol, shares, buy_price, updated_at)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-                """,
-                [(h.symbol.strip().upper(), h.shares, h.buy_price) for h in holdings],
-            )
+        if holdings is not None:
+            cur.execute("DELETE FROM user_target_list_items WHERE list_id = ? AND user_id = ?", (portfolio_id, uid))
+            if holdings:
+                cur.executemany(
+                    """
+                    INSERT INTO user_target_list_items (list_id, user_id, symbol, shares, buy_price, target_price, notes, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    """,
+                    [
+                        (portfolio_id, uid, h.symbol.strip().upper(), h.shares, h.buy_price, h.target_price, h.notes)
+                        for h in holdings
+                    ],
+                )
+    else:
+        cur.execute(
+            "UPDATE user_portfolios SET name = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?",
+            (new_name, new_desc, portfolio_id, uid),
+        )
+        if holdings is not None:
+            cur.execute("DELETE FROM user_portfolio_holdings WHERE portfolio_id = ? AND user_id = ?", (portfolio_id, uid))
+            if holdings:
+                cur.executemany(
+                    """
+                    INSERT INTO user_portfolio_holdings (portfolio_id, user_id, symbol, shares, buy_price, target_price, notes, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    """,
+                    [
+                        (portfolio_id, uid, h.symbol.strip().upper(), h.shares, h.buy_price, h.target_price, h.notes)
+                        for h in holdings
+                    ],
+                )
+
     conn.commit()
-    return get_portfolio(conn, portfolio_id)
+    return get_portfolio(conn, portfolio_id, user_id=uid)
 
 
-def delete_portfolio(conn: sqlite3.Connection, portfolio_id: str) -> bool:
-    """Delete a portfolio by ID. Default portfolio is cleared rather than dropped."""
+def delete_portfolio(
+    conn: sqlite3.Connection,
+    portfolio_id: str,
+    user_id: int | None = None,
+) -> bool:
+    """Delete a portfolio or target list by ID for specific user."""
     init_portfolio_db(conn)
+    uid = user_id if user_id is not None else get_default_user_id(conn)
     cur = conn.cursor()
-    if portfolio_id == "default":
-        cur.execute("DELETE FROM portfolio_holdings WHERE portfolio_id = 'default'")
-        cur.execute("DELETE FROM user_portfolio_holdings")
-        cur.execute("UPDATE user_portfolios SET updated_at = CURRENT_TIMESTAMP WHERE id = 'default'")
-        conn.commit()
-        return True
 
-    cur.execute("DELETE FROM portfolio_holdings WHERE portfolio_id = ?", (portfolio_id,))
-    cur.execute("DELETE FROM user_portfolios WHERE id = ?", (portfolio_id,))
-    conn.commit()
-    return cur.rowcount > 0
+    # Check target lists
+    cur.execute("SELECT id FROM user_target_lists WHERE id = ? AND user_id = ?", (portfolio_id, uid))
+    if cur.fetchone():
+        if portfolio_id == "targetlist_dips":
+            cur.execute("DELETE FROM user_target_list_items WHERE list_id = 'targetlist_dips' AND user_id = ?", (uid,))
+            cur.execute("UPDATE user_target_lists SET updated_at = CURRENT_TIMESTAMP WHERE id = 'targetlist_dips' AND user_id = ?", (uid,))
+            conn.commit()
+            return True
+        cur.execute("DELETE FROM user_target_list_items WHERE list_id = ? AND user_id = ?", (portfolio_id, uid))
+        cur.execute("DELETE FROM user_target_lists WHERE id = ? AND user_id = ?", (portfolio_id, uid))
+        conn.commit()
+        return cur.rowcount > 0
+
+    # Check user portfolios
+    cur.execute("SELECT id FROM user_portfolios WHERE id = ? AND user_id = ?", (portfolio_id, uid))
+    if cur.fetchone():
+        if portfolio_id == "default":
+            cur.execute("DELETE FROM user_portfolio_holdings WHERE portfolio_id = 'default' AND user_id = ?", (uid,))
+            cur.execute("UPDATE user_portfolios SET updated_at = CURRENT_TIMESTAMP WHERE id = 'default' AND user_id = ?", (uid,))
+            conn.commit()
+            return True
+        cur.execute("DELETE FROM user_portfolio_holdings WHERE portfolio_id = ? AND user_id = ?", (portfolio_id, uid))
+        cur.execute("DELETE FROM user_portfolios WHERE id = ? AND user_id = ?", (portfolio_id, uid))
+        conn.commit()
+        return cur.rowcount > 0
+
+    return False
 
 
 def add_or_update_holding_in_portfolio(
     conn: sqlite3.Connection,
     portfolio_id: str,
     holding: UserHolding,
+    user_id: int | None = None,
 ) -> None:
-    """Add or update an individual stock in a specific portfolio or target list."""
+    """Add or update an individual stock in a specific portfolio or target list for given user."""
     init_portfolio_db(conn)
+    uid = user_id if user_id is not None else get_default_user_id(conn)
     cur = conn.cursor()
-    cur.execute("SELECT id FROM user_portfolios WHERE id = ?", (portfolio_id,))
-    if not cur.fetchone():
-        create_portfolio(conn, name=portfolio_id.replace("_", " ").title())
-
     sym = holding.symbol.strip().upper()
-    cur.execute(
-        """
-        INSERT INTO portfolio_holdings (portfolio_id, symbol, shares, buy_price, target_price, notes, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ON CONFLICT(portfolio_id, symbol) DO UPDATE SET
-            shares = excluded.shares,
-            buy_price = excluded.buy_price,
-            target_price = excluded.target_price,
-            notes = excluded.notes,
-            updated_at = CURRENT_TIMESTAMP
-        """,
-        (portfolio_id, sym, holding.shares, holding.buy_price, holding.target_price, holding.notes),
-    )
-    if portfolio_id == "default":
+
+    # If target list
+    cur.execute("SELECT id FROM user_target_lists WHERE id = ? AND user_id = ?", (portfolio_id, uid))
+    if cur.fetchone() or portfolio_id.startswith("targetlist"):
+        cur.execute("INSERT OR IGNORE INTO user_target_lists (id, user_id, name) VALUES (?, ?, ?)", (portfolio_id, uid, portfolio_id.replace("_", " ").title()))
         cur.execute(
             """
-            INSERT INTO user_portfolio_holdings (symbol, shares, buy_price, updated_at)
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(symbol) DO UPDATE SET
+            INSERT INTO user_target_list_items (list_id, user_id, symbol, shares, buy_price, target_price, notes, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(list_id, user_id, symbol) DO UPDATE SET
                 shares = excluded.shares,
                 buy_price = excluded.buy_price,
+                target_price = excluded.target_price,
+                notes = excluded.notes,
                 updated_at = CURRENT_TIMESTAMP
             """,
-            (sym, holding.shares, holding.buy_price),
+            (portfolio_id, uid, sym, holding.shares, holding.buy_price, holding.target_price, holding.notes),
         )
-    cur.execute("UPDATE user_portfolios SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (portfolio_id,))
+        cur.execute("UPDATE user_target_lists SET updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?", (portfolio_id, uid))
+    else:
+        cur.execute("INSERT OR IGNORE INTO user_portfolios (id, user_id, name) VALUES (?, ?, ?)", (portfolio_id, uid, portfolio_id.replace("_", " ").title()))
+        cur.execute(
+            """
+            INSERT INTO user_portfolio_holdings (portfolio_id, user_id, symbol, shares, buy_price, target_price, notes, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(portfolio_id, user_id, symbol) DO UPDATE SET
+                shares = excluded.shares,
+                buy_price = excluded.buy_price,
+                target_price = excluded.target_price,
+                notes = excluded.notes,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (portfolio_id, uid, sym, holding.shares, holding.buy_price, holding.target_price, holding.notes),
+        )
+        cur.execute("UPDATE user_portfolios SET updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?", (portfolio_id, uid))
     conn.commit()
 
 
@@ -468,15 +848,18 @@ def remove_holding_from_portfolio(
     conn: sqlite3.Connection,
     portfolio_id: str,
     symbol: str,
+    user_id: int | None = None,
 ) -> None:
-    """Remove a stock from a specific portfolio."""
+    """Remove a stock from a specific portfolio or target list for given user."""
     init_portfolio_db(conn)
+    uid = user_id if user_id is not None else get_default_user_id(conn)
     cur = conn.cursor()
     sym = symbol.strip().upper()
-    cur.execute("DELETE FROM portfolio_holdings WHERE portfolio_id = ? AND symbol = ?", (portfolio_id, sym))
-    if portfolio_id == "default":
-        cur.execute("DELETE FROM user_portfolio_holdings WHERE symbol = ?", (sym,))
-    cur.execute("UPDATE user_portfolios SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (portfolio_id,))
+
+    cur.execute("DELETE FROM user_target_list_items WHERE list_id = ? AND user_id = ? AND symbol = ?", (portfolio_id, uid, sym))
+    cur.execute("DELETE FROM user_portfolio_holdings WHERE portfolio_id = ? AND user_id = ? AND symbol = ?", (portfolio_id, uid, sym))
+    cur.execute("UPDATE user_target_lists SET updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?", (portfolio_id, uid))
+    cur.execute("UPDATE user_portfolios SET updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?", (portfolio_id, uid))
     conn.commit()
 
 
@@ -484,25 +867,23 @@ def save_user_holdings(
     conn: sqlite3.Connection,
     holdings: list[UserHolding],
     portfolio_id: str = "default",
+    user_id: int | None = None,
 ) -> None:
-    """Persist active user holdings to database for given portfolio (default='default')."""
+    """Persist active user holdings to database for given portfolio and user."""
     init_portfolio_db(conn)
-    update_portfolio(conn, portfolio_id=portfolio_id, holdings=holdings)
+    update_portfolio(conn, portfolio_id=portfolio_id, holdings=holdings, user_id=user_id)
 
 
 def load_user_holdings(
     conn: sqlite3.Connection,
     portfolio_id: str = "default",
+    user_id: int | None = None,
 ) -> list[UserHolding]:
-    """Retrieve saved user holdings from database for given portfolio (default='default')."""
-    p = get_portfolio(conn, portfolio_id)
+    """Retrieve saved user holdings from database for given portfolio and user."""
+    p = get_portfolio(conn, portfolio_id, user_id=user_id)
     if p is not None:
         return p.holdings
-    init_portfolio_db(conn)
-    cur = conn.cursor()
-    cur.execute("SELECT symbol, shares, buy_price FROM user_portfolio_holdings ORDER BY symbol ASC")
-    rows = cur.fetchall()
-    return [UserHolding(symbol=r[0], shares=float(r[1]), buy_price=float(r[2])) for r in rows]
+    return []
 
 
 def _determine_factor_tiers(

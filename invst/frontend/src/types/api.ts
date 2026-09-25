@@ -238,6 +238,18 @@ export interface MacroPulseResponse {
   is_live: boolean;
 }
 
+export interface TickerItem {
+  symbol: string;
+  price: string;
+  change: string;
+  isPositive: boolean;
+  change_pct?: number;
+  price_val?: number;
+  category?: string;
+  raw_symbol?: string;
+  last_updated?: string;
+}
+
 export interface HorizonProjection {
   horizon: string;
   months: number;
@@ -525,5 +537,70 @@ export interface PortfolioHealthResponse {
   factor_health?: Record<string, PortfolioFactorHealth>;
   diversification?: PortfolioDiversification;
   rebalancing_blueprint?: RebalancingBlueprint;
+}
+
+export interface UserProfile {
+  id: number;
+  email: string;
+  name: string | null;
+  role: 'admin' | 'user' | string;
+  user_type?: 'ADMIN' | 'PRO_INVESTOR' | string;
+  status: 'INVITED' | 'ACTIVE' | 'SUSPENDED' | string;
+  created_at: string | null;
+  last_login: string | null;
+}
+
+export interface EmailLookupResponse {
+  email: string;
+  exists: boolean;
+  status: 'INVITED' | 'ACTIVE' | 'SUSPENDED' | 'NOT_FOUND';
+  name?: string | null;
+  role?: string | null;
+  user_type?: 'ADMIN' | 'PRO_INVESTOR' | string;
+}
+
+export interface SetPasswordResponse {
+  token: string;
+  email: string;
+  role: string;
+  user_type?: string;
+  status: string;
+  message: string;
+}
+
+export interface AdminSummaryResponse {
+  total_users: number;
+  active_users: number;
+  invited_users: number;
+  suspended_users: number;
+  model_trained: boolean;
+  model_version: string | null;
+  backtests_count: number;
+  system_status: string;
+}
+
+export interface AdminCreateUserRequest {
+  email: string;
+  name?: string | null;
+  role?: 'user' | 'admin' | string;
+  user_type?: 'ADMIN' | 'PRO_INVESTOR' | string;
+}
+
+export interface AdminUpdateStatusRequest {
+  status: 'ACTIVE' | 'SUSPENDED' | 'INVITED' | string;
+}
+
+export interface ChangePasswordRequest {
+  current_password: string;
+  new_password: string;
+}
+
+export interface ChangePasswordResponse {
+  success: boolean;
+  message: string;
+}
+
+export interface UpdateProfileRequest {
+  name?: string | null;
 }
 
