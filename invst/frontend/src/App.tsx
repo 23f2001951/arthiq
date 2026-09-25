@@ -142,37 +142,39 @@ export const App: React.FC = () => {
         )}
 
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-          {currentTab === 'dashboard' && (
-            <DashboardView
-              onNavigateTab={(tab, subTab) => {
-                setCurrentTab(tab as NavTab);
-                if (subTab) setStockIdeasSubTab(subTab as StockIdeasSubTab);
-              }}
-            />
-          )}
-          {currentTab === 'recommendations' && (
-            <RecommendationsView
-              activeSubTab={stockIdeasSubTab}
-              onSelectSubTab={setStockIdeasSubTab}
-            />
-          )}
-          {currentTab === 'analyzer' && (
-            <StockAnalyzerView
-              initialSymbol={analyzerSymbol}
-              onNavigateTab={(tab) => setCurrentTab(tab as NavTab)}
-            />
-          )}
-          {currentTab === 'portfolio' && <PortfolioHealthView />}
-          {currentTab === 'targetlist' && (
-            <TargetListView
-              onNavigateTab={(tab, sym) => {
-                if (sym) setAnalyzerSymbol(sym);
-                setCurrentTab(tab as NavTab);
-              }}
-            />
-          )}
-          {currentTab === 'backtest' && <BacktestView />}
-          {currentTab === 'health' && <HealthView />}
+          <div key={currentTab} className="animate-fade-in-up space-y-8">
+            {currentTab === 'dashboard' && (
+              <DashboardView
+                onNavigateTab={(tab, subTab) => {
+                  setCurrentTab(tab as NavTab);
+                  if (subTab) setStockIdeasSubTab(subTab as StockIdeasSubTab);
+                }}
+              />
+            )}
+            {currentTab === 'recommendations' && (
+              <RecommendationsView
+                activeSubTab={stockIdeasSubTab}
+                onSelectSubTab={setStockIdeasSubTab}
+              />
+            )}
+            {currentTab === 'analyzer' && (
+              <StockAnalyzerView
+                initialSymbol={analyzerSymbol}
+                onNavigateTab={(tab) => setCurrentTab(tab as NavTab)}
+              />
+            )}
+            {currentTab === 'portfolio' && <PortfolioHealthView />}
+            {currentTab === 'targetlist' && (
+              <TargetListView
+                onNavigateTab={(tab, sym) => {
+                  if (sym) setAnalyzerSymbol(sym);
+                  setCurrentTab(tab as NavTab);
+                }}
+              />
+            )}
+            {currentTab === 'backtest' && <BacktestView />}
+            {currentTab === 'health' && <HealthView />}
+          </div>
 
           {/* Modern Artbox-Style Footer Card */}
           <ModernArtboxFooter />

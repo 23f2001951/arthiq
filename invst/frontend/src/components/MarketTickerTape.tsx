@@ -28,33 +28,44 @@ export const MarketTickerTape: React.FC = () => {
   const tapeItems = [...TICKERS, ...TICKERS];
 
   return (
-    <div className="w-full bg-[#06070a] border-y border-white/[0.06] overflow-hidden ticker-tape-container py-2 text-xs select-none">
+    <div className="relative w-full bg-[#05070c]/90 backdrop-blur-md border-y border-white/[0.06] overflow-hidden ticker-tape-container py-2 text-xs select-none">
+      {/* Edge gradient fade masks for seamless floating appearance */}
+      <div className="pointer-events-none absolute left-24 top-0 bottom-0 w-12 bg-gradient-to-r from-[#05070c] to-transparent z-10" />
+      <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-[#05070c] to-transparent z-10" />
+
       <div className="flex items-center">
-        {/* Static live badge */}
-        <div className="flex items-center space-x-1.5 px-3 py-0.5 bg-winsor-950 border-r border-winsor-800/40 text-winsor-400 font-semibold tracking-wider text-[10px] shrink-0 z-10 shadow-lg">
-          <Radio className="w-3 h-3 text-winsor-400 animate-pulse" />
-          <span>NSE LIVE</span>
+        {/* Static live badge with pulsing radar beacon */}
+        <div className="relative flex items-center space-x-1.5 px-3 py-1 bg-gradient-to-r from-winsor-950 to-slate-950 border-r border-winsor-800/40 text-winsor-400 font-bold tracking-wider text-[10px] shrink-0 z-20 shadow-[4px_0_12px_rgba(0,0,0,0.5)]">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+          </span>
+          <Radio className="w-3 h-3 text-sky-400" />
+          <span className="font-mono">NSE LIVE</span>
         </div>
 
         {/* Scrolling marquee */}
-        <div className="flex space-x-8 animate-marquee whitespace-nowrap pl-6">
+        <div className="flex space-x-6 animate-marquee whitespace-nowrap pl-6">
           {tapeItems.map((item, idx) => {
             const TrendIcon = item.isPositive ? TrendingUp : TrendingDown;
             return (
-              <div key={idx} className="inline-flex items-center space-x-2 font-mono">
-                <span className="text-slate-300 font-semibold">{item.symbol}</span>
-                <span className="text-slate-100">{item.price}</span>
+              <div
+                key={idx}
+                className="inline-flex items-center space-x-2 font-mono px-2 py-0.5 rounded-lg hover:bg-white/[0.05] border border-transparent hover:border-white/[0.08] transition-all cursor-default"
+              >
+                <span className="text-slate-300 font-semibold text-xs">{item.symbol}</span>
+                <span className="text-white font-bold text-xs">{item.price}</span>
                 <span
-                  className={`inline-flex items-center px-1.5 py-0.2 rounded text-[11px] font-medium ${
+                  className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
                     item.isPositive
-                      ? 'text-emerald-400 bg-emerald-950/40'
-                      : 'text-rose-400 bg-rose-950/40'
+                      ? 'text-emerald-300 bg-emerald-950/60 border border-emerald-500/20'
+                      : 'text-rose-300 bg-rose-950/60 border border-rose-500/20'
                   }`}
                 >
-                  <TrendIcon className="w-3 h-3 mr-0.5" />
+                  <TrendIcon className="w-2.5 h-2.5 mr-0.5" />
                   {item.change}
                 </span>
-                <span className="text-slate-700">|</span>
+                <span className="text-slate-700/60 ml-2">•</span>
               </div>
             );
           })}

@@ -229,6 +229,7 @@ const DashboardViewInner: React.FC<DashboardViewProps> = ({ onNavigateTab }) => 
           delta={hasMainHoldings ? `${safeNum(mainPort?.total_unrealized_pnl_pct) >= 0 ? '+' : ''}${safeToFixed(mainPort?.total_unrealized_pnl_pct, 2)}% Return` : '0.00%'}
           deltaPositive={hasMainHoldings ? safeNum(mainPort?.total_unrealized_pnl) >= 0 : true}
           icon={Wallet}
+          variant="emerald"
           sparkline={true}
         />
         <KPICard
@@ -238,6 +239,7 @@ const DashboardViewInner: React.FC<DashboardViewProps> = ({ onNavigateTab }) => 
           delta={hasMainHoldings ? `Quality: ${safeToFixed(mainPort?.weighted_business_score, 0)} | Val: ${safeToFixed(mainPort?.weighted_valuation_score, 0)}` : 'No score'}
           deltaPositive={hasMainHoldings ? safeNum(mainPort?.overall_health_score) >= 60 : true}
           icon={TrendingUp}
+          variant="winsor"
           sparkline={true}
         />
         <KPICard
@@ -247,6 +249,7 @@ const DashboardViewInner: React.FC<DashboardViewProps> = ({ onNavigateTab }) => 
           delta={macro?.regime ? `${macro.regime} Regime` : 'NEUTRAL'}
           deltaPositive={macro?.regime !== 'HIGH_VOLATILITY'}
           icon={Activity}
+          variant={macro?.regime === 'HIGH_VOLATILITY' ? 'amber' : 'info'}
           sparkline={false}
         />
         <KPICard
@@ -256,14 +259,27 @@ const DashboardViewInner: React.FC<DashboardViewProps> = ({ onNavigateTab }) => 
           delta={hasMainHoldings ? ((mainPort?.critical_redline_alerts?.length ?? 0) === 0 ? 'Zero Redlines' : `${mainPort?.critical_redline_alerts?.length} Redline Alert`) : 'Model Target'}
           deltaPositive={hasMainHoldings ? (mainPort?.critical_redline_alerts?.length ?? 0) === 0 : true}
           icon={PieChart}
+          variant="purple"
           sparkline={true}
         />
       </div>
 
-      {/* 4. Capsule Bar Chart + Market Regime Arc Dial */}
+      {/* 4. Real Stock Weight & Performance Attribution + Market Regime Arc Dial */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-7">
-          <CapsuleBarChart />
+          <CapsuleBarChart
+            positions={positions}
+            modelHoldings={modelHoldings}
+            totalValue={safeNum(mainPort?.total_current_value, 0)}
+            totalPnl={safeNum(mainPort?.total_unrealized_pnl, 0)}
+            totalPnlPct={safeNum(mainPort?.total_unrealized_pnl_pct, 0)}
+            portfolioName={mainPort?.portfolio_name || 'Main Portfolio'}
+            onSelectStock={() => {
+              if (onNavigateTab) {
+                onNavigateTab('analyzer');
+              }
+            }}
+          />
         </div>
         <div className="lg:col-span-5">
           <MarketRegimeArcGauge
@@ -303,25 +319,25 @@ const DashboardViewInner: React.FC<DashboardViewProps> = ({ onNavigateTab }) => 
       )}
 
       {/* 9. Portfolio Holdings & Model Table */}
-      <div className="glass-card overflow-hidden">
-        <div className="p-5 border-b border-white/[0.06] flex flex-wrap items-center justify-between gap-4 bg-[#07090f]/60">
+      <div className="glass-panel overflow-hidden">
+        <div className="p-5 border-b border-white/[0.08] flex flex-wrap items-center justify-between gap-4 bg-[#07090f]/70">
           <div className="flex items-center space-x-2">
             <button
               onClick={() => setActiveTableTab('main')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 activeTableTab === 'main'
-                  ? 'bg-winsor-500/20 text-winsor-400 border border-winsor-500/40 shadow-sm'
-                  : 'text-slate-400 hover:text-white border border-transparent'
+                  ? 'bg-gradient-to-r from-winsor-700 to-sky-600 text-white border border-sky-400/50 shadow-[0_0_15px_rgba(37,99,235,0.4)]'
+                  : 'text-slate-400 hover:text-white border border-transparent hover:bg-white/[0.04]'
               }`}
             >
               💼 Active Main Holdings ({positions.length})
             </button>
             <button
               onClick={() => setActiveTableTab('model')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 activeTableTab === 'model'
-                  ? 'bg-winsor-500/20 text-winsor-400 border border-winsor-500/40 shadow-sm'
-                  : 'text-slate-400 hover:text-white border border-transparent'
+                  ? 'bg-gradient-to-r from-winsor-700 to-sky-600 text-white border border-sky-400/50 shadow-[0_0_15px_rgba(37,99,235,0.4)]'
+                  : 'text-slate-400 hover:text-white border border-transparent hover:bg-white/[0.04]'
               }`}
             >
               🎯 Algorithmic Target Model ({modelHoldings.length})
@@ -374,12 +390,16 @@ const DashboardViewInner: React.FC<DashboardViewProps> = ({ onNavigateTab }) => 
                     const expReturn = safeNum(p.expected_return_12m, 0);
                     const sectorName = String(p.sector || 'General').replace(/_/g, ' ');
 
+                    const action = p.action_badge || 'HOLD';
+                    const isAccumulate = action.includes('ACCUMULATE') || action.includes('BUY');
+                    const isTrim = action.includes('TRIM') || action.includes('REBALANCE') || action.includes('SELL');
+
                     return (
                       <tr
                         key={p.symbol}
-                        className="hover:bg-winsor-950/20 transition-colors group"
+                        className="hover:bg-sky-500/[0.04] transition-all duration-150 group border-l-2 border-transparent hover:border-sky-400"
                       >
-                        <td className="py-3.5 px-4 font-black text-white font-mono text-sm tracking-tight group-hover:text-winsor-300 transition-colors">
+                        <td className="py-3.5 px-4 font-black text-white font-mono text-sm tracking-tight group-hover:text-sky-300 transition-colors">
                           {p.symbol}
                         </td>
                         <td className="py-3.5 px-4 capitalize text-slate-400">
@@ -416,8 +436,21 @@ const DashboardViewInner: React.FC<DashboardViewProps> = ({ onNavigateTab }) => 
                           {expReturn >= 0 ? `+${safeToFixed(expReturn, 1)}%` : `${safeToFixed(expReturn, 1)}%`}
                         </td>
                         <td className="py-3.5 px-4 text-center">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800/80 text-slate-200 border border-white/[0.08]">
-                            {p.action_badge || 'HOLD'}
+                          <span
+                            className={`inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold border ${
+                              isAccumulate
+                                ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/30'
+                                : isTrim
+                                ? 'bg-rose-950/60 text-rose-300 border-rose-500/30'
+                                : 'bg-sky-950/60 text-sky-300 border-sky-500/30'
+                            }`}
+                          >
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                isAccumulate ? 'bg-emerald-400 animate-pulse' : isTrim ? 'bg-rose-400' : 'bg-sky-400'
+                              }`}
+                            />
+                            <span>{action}</span>
                           </span>
                         </td>
                         <td className="py-3.5 px-4 text-xs text-slate-400 max-w-xs truncate" title={p.action_rationale || ''}>
@@ -455,9 +488,9 @@ const DashboardViewInner: React.FC<DashboardViewProps> = ({ onNavigateTab }) => 
                     return (
                       <tr
                         key={h.symbol}
-                        className="hover:bg-winsor-950/20 transition-colors group"
+                        className="hover:bg-sky-500/[0.04] transition-all duration-150 group border-l-2 border-transparent hover:border-sky-400"
                       >
-                        <td className="py-3.5 px-4 font-black text-white font-mono text-sm tracking-tight group-hover:text-winsor-300 transition-colors">
+                        <td className="py-3.5 px-4 font-black text-white font-mono text-sm tracking-tight group-hover:text-sky-300 transition-colors">
                           {h.symbol}
                         </td>
                         <td className="py-3.5 px-4 capitalize text-slate-400">
@@ -465,15 +498,20 @@ const DashboardViewInner: React.FC<DashboardViewProps> = ({ onNavigateTab }) => 
                         </td>
                         <td className="py-3.5 px-4">
                           <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded text-[11px] font-bold ${
+                            className={`inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold border ${
                               h.action === 'BUY'
-                                ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/50'
+                                ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/30'
                                 : h.action === 'SELL'
-                                ? 'bg-rose-950/60 text-rose-400 border border-rose-800/50'
-                                : 'bg-slate-800/60 text-slate-300 border border-slate-700/50'
+                                ? 'bg-rose-950/60 text-rose-300 border-rose-500/30'
+                                : 'bg-slate-800/60 text-slate-300 border-slate-700/50'
                             }`}
                           >
-                            {h.action}
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                h.action === 'BUY' ? 'bg-emerald-400 animate-pulse' : h.action === 'SELL' ? 'bg-rose-400' : 'bg-slate-400'
+                              }`}
+                            />
+                            <span>{h.action}</span>
                           </span>
                         </td>
                         <td className="py-3.5 px-4">

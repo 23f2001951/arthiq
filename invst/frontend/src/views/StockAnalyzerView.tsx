@@ -17,7 +17,10 @@ import {
   BookmarkPlus,
   ExternalLink,
   X,
+  Sparkles,
 } from 'lucide-react';
+import { FactorRadarChart } from '../components/FactorRadarChart';
+import { PriceRangeLadder } from '../components/PriceRangeLadder';
 import {
   analyzeStock,
   fetchMacroPulse,
@@ -425,6 +428,16 @@ export const StockAnalyzerView: React.FC<StockAnalyzerViewProps> = ({ onNavigate
             </div>
           </div>
 
+          {/* Interactive Price Range & Key Levels Ladder */}
+          <PriceRangeLadder
+            currentPrice={data.current_price}
+            low52w={data.low_52w}
+            high52w={data.high_52w}
+            dma50={data.dma_50}
+            dma200={data.dma_200}
+            dipTargetPrice={data.tactical_action?.dip_target_price}
+          />
+
           {/* 4. HERO TACTICAL DECISION & EXECUTION PLAN */}
           <div className="p-6 rounded-3xl bg-gradient-to-br from-[#0c1224] via-[#090e1c] to-[#070b16] border border-white/[0.12] shadow-2xl space-y-6">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-white/[0.08]">
@@ -569,121 +582,150 @@ export const StockAnalyzerView: React.FC<StockAnalyzerViewProps> = ({ onNavigate
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Business Quality Score */}
-              <div
-                onClick={() => setActiveScoreDetail(activeScoreDetail === 'bqs' ? null : 'bqs')}
-                className={`p-5 rounded-2xl bg-[#090d19] border transition-all cursor-pointer space-y-3 ${
-                  activeScoreDetail === 'bqs' ? 'border-sky-400 ring-1 ring-sky-400/30 shadow-lg' : 'border-white/[0.08] hover:border-white/20'
-                }`}
-              >
-                <div className="flex justify-between items-start">
-                  <div>
-                    <span className="text-[10px] font-mono text-slate-400 uppercase block">Business Quality (BQS)</span>
-                    <span className="text-2xl font-black font-mono text-sky-400 block mt-1">
-                      {data.business_quality_score.toFixed(1)}
-                    </span>
-                  </div>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-sky-500/10 text-sky-400 border border-sky-500/20 font-bold">
-                    Moat & ROCE
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+              {/* Radar Pentagon Profile Chart */}
+              <div className="lg:col-span-4 glass-panel p-5 rounded-3xl flex flex-col items-center justify-between border border-white/[0.08] shadow-xl">
+                <div className="w-full flex items-center justify-between pb-2 border-b border-white/[0.06]">
+                  <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-sky-400 flex items-center">
+                    <Sparkles className="w-3.5 h-3.5 mr-1 text-amber-400" />
+                    Factor Profile Star
                   </span>
+                  <span className="text-[10px] font-mono text-slate-400 font-bold">BASE 50</span>
                 </div>
-                <div className="text-xs text-slate-300 font-medium">
-                  {data.score_breakdowns?.business_quality.tier || 'Economic Moat'}
+                <FactorRadarChart
+                  size={250}
+                  stockName={data.symbol}
+                  data={[
+                    { axis: 'Quality', score: data.business_quality_score, benchmark: 55, description: data.score_breakdowns?.business_quality?.tier },
+                    { axis: 'Valuation', score: data.valuation_score, benchmark: 50, description: data.score_breakdowns?.valuation?.tier },
+                    { axis: 'Growth', score: data.growth_score, benchmark: 52, description: data.score_breakdowns?.growth?.tier },
+                    { axis: 'Low Risk', score: data.risk_score, benchmark: 60, description: data.score_breakdowns?.risk?.tier },
+                    { axis: 'Technicals', score: data.technical_overview?.rsi_14 || 50, benchmark: 50, description: data.technical_overview?.trend_phase },
+                    { axis: 'Conviction', score: data.investment_score, benchmark: 50, description: data.verdict_badge },
+                  ]}
+                />
+                <div className="w-full text-center text-[10px] font-mono text-slate-400 pt-2 border-t border-white/[0.06]">
+                  Composite Conviction: <strong className="text-white font-bold">{data.investment_score.toFixed(1)}/100</strong>
                 </div>
-                <p className="text-[11px] text-slate-400 leading-relaxed">
-                  {data.score_breakdowns?.business_quality.interpretation || 'Evaluates competitive moat, pricing power, and return on capital.'}
-                </p>
-                <span className="text-[10px] text-sky-400 font-mono flex items-center gap-1">
-                  <HelpCircle className="w-3 h-3" /> Click to view sub-metrics
-                </span>
               </div>
 
-              {/* Valuation Score */}
-              <div
-                onClick={() => setActiveScoreDetail(activeScoreDetail === 'val' ? null : 'val')}
-                className={`p-5 rounded-2xl bg-[#090d19] border transition-all cursor-pointer space-y-3 ${
-                  activeScoreDetail === 'val' ? 'border-emerald-400 ring-1 ring-emerald-400/30 shadow-lg' : 'border-white/[0.08] hover:border-white/20'
-                }`}
-              >
-                <div className="flex justify-between items-start">
-                  <div>
-                    <span className="text-[10px] font-mono text-slate-400 uppercase block">Valuation Score</span>
-                    <span className="text-2xl font-black font-mono text-emerald-400 block mt-1">
-                      {data.valuation_score.toFixed(1)}
+              {/* 4 Factor Pillars Grid */}
+              <div className="lg:col-span-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Business Quality Score */}
+                <div
+                  onClick={() => setActiveScoreDetail(activeScoreDetail === 'bqs' ? null : 'bqs')}
+                  className={`p-5 rounded-2xl bg-[#090d19] border transition-all cursor-pointer space-y-3 ${
+                    activeScoreDetail === 'bqs' ? 'border-sky-400 ring-1 ring-sky-400/30 shadow-lg' : 'border-white/[0.08] hover:border-white/20'
+                  }`}
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <span className="text-[10px] font-mono text-slate-400 uppercase block">Business Quality (BQS)</span>
+                      <span className="text-2xl font-black font-mono text-sky-400 block mt-1">
+                        {data.business_quality_score.toFixed(1)}
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-sky-500/10 text-sky-400 border border-sky-500/20 font-bold">
+                      Moat & ROCE
                     </span>
                   </div>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">
-                    Margin of Safety
+                  <div className="text-xs text-slate-300 font-medium">
+                    {data.score_breakdowns?.business_quality.tier || 'Economic Moat'}
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    {data.score_breakdowns?.business_quality.interpretation || 'Evaluates competitive moat, pricing power, and return on capital.'}
+                  </p>
+                  <span className="text-[10px] text-sky-400 font-mono flex items-center gap-1">
+                    <HelpCircle className="w-3 h-3" /> Click to view sub-metrics
                   </span>
                 </div>
-                <div className="text-xs text-slate-300 font-medium">
-                  {data.score_breakdowns?.valuation.tier || 'Fair Value'}
-                </div>
-                <p className="text-[11px] text-slate-400 leading-relaxed">
-                  {data.score_breakdowns?.valuation.interpretation || 'Measures multiple safety and Reverse-DCF implied cash flow expectations.'}
-                </p>
-                <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
-                  <HelpCircle className="w-3 h-3" /> Click to view sub-metrics
-                </span>
-              </div>
 
-              {/* Growth Score */}
-              <div
-                onClick={() => setActiveScoreDetail(activeScoreDetail === 'growth' ? null : 'growth')}
-                className={`p-5 rounded-2xl bg-[#090d19] border transition-all cursor-pointer space-y-3 ${
-                  activeScoreDetail === 'growth' ? 'border-amber-400 ring-1 ring-amber-400/30 shadow-lg' : 'border-white/[0.08] hover:border-white/20'
-                }`}
-              >
-                <div className="flex justify-between items-start">
-                  <div>
-                    <span className="text-[10px] font-mono text-slate-400 uppercase block">Growth Score</span>
-                    <span className="text-2xl font-black font-mono text-amber-400 block mt-1">
-                      {data.growth_score.toFixed(1)}
+                {/* Valuation Score */}
+                <div
+                  onClick={() => setActiveScoreDetail(activeScoreDetail === 'val' ? null : 'val')}
+                  className={`p-5 rounded-2xl bg-[#090d19] border transition-all cursor-pointer space-y-3 ${
+                    activeScoreDetail === 'val' ? 'border-emerald-400 ring-1 ring-emerald-400/30 shadow-lg' : 'border-white/[0.08] hover:border-white/20'
+                  }`}
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <span className="text-[10px] font-mono text-slate-400 uppercase block">Valuation Score</span>
+                      <span className="text-2xl font-black font-mono text-emerald-400 block mt-1">
+                        {data.valuation_score.toFixed(1)}
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">
+                      Margin of Safety
                     </span>
                   </div>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 font-bold">
-                    CAGR & Accel
+                  <div className="text-xs text-slate-300 font-medium">
+                    {data.score_breakdowns?.valuation.tier || 'Fair Value'}
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    {data.score_breakdowns?.valuation.interpretation || 'Measures multiple safety and Reverse-DCF implied cash flow expectations.'}
+                  </p>
+                  <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
+                    <HelpCircle className="w-3 h-3" /> Click to view sub-metrics
                   </span>
                 </div>
-                <div className="text-xs text-slate-300 font-medium">
-                  {data.score_breakdowns?.growth.tier || 'Earnings Trajectory'}
-                </div>
-                <p className="text-[11px] text-slate-400 leading-relaxed">
-                  {data.score_breakdowns?.growth.interpretation || 'Measures historical revenue/PAT CAGR and incremental capital efficiency.'}
-                </p>
-                <span className="text-[10px] text-amber-400 font-mono flex items-center gap-1">
-                  <HelpCircle className="w-3 h-3" /> Click to view sub-metrics
-                </span>
-              </div>
 
-              {/* Solvency & Risk Score */}
-              <div
-                onClick={() => setActiveScoreDetail(activeScoreDetail === 'risk' ? null : 'risk')}
-                className={`p-5 rounded-2xl bg-[#090d19] border transition-all cursor-pointer space-y-3 ${
-                  activeScoreDetail === 'risk' ? 'border-purple-400 ring-1 ring-purple-400/30 shadow-lg' : 'border-white/[0.08] hover:border-white/20'
-                }`}
-              >
-                <div className="flex justify-between items-start">
-                  <div>
-                    <span className="text-[10px] font-mono text-slate-400 uppercase block">Solvency Risk Score</span>
-                    <span className="text-2xl font-black font-mono text-purple-400 block mt-1">
-                      {data.risk_score.toFixed(1)}
+                {/* Growth Score */}
+                <div
+                  onClick={() => setActiveScoreDetail(activeScoreDetail === 'growth' ? null : 'growth')}
+                  className={`p-5 rounded-2xl bg-[#090d19] border transition-all cursor-pointer space-y-3 ${
+                    activeScoreDetail === 'growth' ? 'border-amber-400 ring-1 ring-amber-400/30 shadow-lg' : 'border-white/[0.08] hover:border-white/20'
+                  }`}
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <span className="text-[10px] font-mono text-slate-400 uppercase block">Growth Score</span>
+                      <span className="text-2xl font-black font-mono text-amber-400 block mt-1">
+                        {data.growth_score.toFixed(1)}
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 font-bold">
+                      CAGR & Accel
                     </span>
                   </div>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-400 border border-purple-500/20 font-bold">
-                    Balance Sheet
+                  <div className="text-xs text-slate-300 font-medium">
+                    {data.score_breakdowns?.growth.tier || 'Earnings Trajectory'}
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    {data.score_breakdowns?.growth.interpretation || 'Measures historical revenue/PAT CAGR and incremental capital efficiency.'}
+                  </p>
+                  <span className="text-[10px] text-amber-400 font-mono flex items-center gap-1">
+                    <HelpCircle className="w-3 h-3" /> Click to view sub-metrics
                   </span>
                 </div>
-                <div className="text-xs text-slate-300 font-medium">
-                  {data.score_breakdowns?.risk.tier || 'Fortress Health'}
+
+                {/* Solvency & Risk Score */}
+                <div
+                  onClick={() => setActiveScoreDetail(activeScoreDetail === 'risk' ? null : 'risk')}
+                  className={`p-5 rounded-2xl bg-[#090d19] border transition-all cursor-pointer space-y-3 ${
+                    activeScoreDetail === 'risk' ? 'border-purple-400 ring-1 ring-purple-400/30 shadow-lg' : 'border-white/[0.08] hover:border-white/20'
+                  }`}
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <span className="text-[10px] font-mono text-slate-400 uppercase block">Solvency Risk Score</span>
+                      <span className="text-2xl font-black font-mono text-purple-400 block mt-1">
+                        {data.risk_score.toFixed(1)}
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-400 border border-purple-500/20 font-bold">
+                      Balance Sheet
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-300 font-medium">
+                    {data.score_breakdowns?.risk.tier || 'Fortress Health'}
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    {data.score_breakdowns?.risk.interpretation || 'Assesses debt leverage, Altman-Z insolvency defense, and promoter pledging.'}
+                  </p>
+                  <span className="text-[10px] text-purple-400 font-mono flex items-center gap-1">
+                    <HelpCircle className="w-3 h-3" /> Click to view sub-metrics
+                  </span>
                 </div>
-                <p className="text-[11px] text-slate-400 leading-relaxed">
-                  {data.score_breakdowns?.risk.interpretation || 'Assesses debt leverage, Altman-Z insolvency defense, and promoter pledging.'}
-                </p>
-                <span className="text-[10px] text-purple-400 font-mono flex items-center gap-1">
-                  <HelpCircle className="w-3 h-3" /> Click to view sub-metrics
-                </span>
               </div>
             </div>
 
@@ -829,30 +871,36 @@ export const StockAnalyzerView: React.FC<StockAnalyzerViewProps> = ({ onNavigate
               </div>
 
               {/* Research Tabs */}
-              <div className="flex items-center gap-1 border-b border-white/[0.08] pb-2 overflow-x-auto">
+              <div className="flex items-center gap-1.5 border-b border-white/[0.08] pb-3 overflow-x-auto no-scrollbar">
                 {[
                   { id: 'exec', label: 'Executive Thesis' },
                   { id: 'moat', label: 'Competitive Moat' },
                   { id: 'val', label: 'Valuation & Reverse DCF' },
                   { id: 'tech', label: 'Trend & Structure' },
                   { id: 'tactical', label: 'Tactical Plan' },
-                ].map((t) => (
-                  <button
-                    key={t.id}
-                    onClick={() => setActiveThesisTab(t.id as any)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-mono font-medium transition-all whitespace-nowrap ${
-                      activeThesisTab === t.id
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
+                ].map((t) => {
+                  const isActive = activeThesisTab === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => setActiveThesisTab(t.id as any)}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-mono font-bold transition-all duration-200 whitespace-nowrap cursor-pointer ${
+                        isActive
+                          ? 'bg-gradient-to-r from-amber-500/25 to-yellow-500/20 text-amber-200 border border-amber-400/50 shadow-[0_0_15px_rgba(245,158,11,0.25)]'
+                          : 'text-slate-400 hover:text-white hover:bg-white/[0.04] border border-transparent'
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  );
+                })}
               </div>
 
-              {/* Active Tab Content */}
-              <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.04] text-xs leading-relaxed text-slate-300 font-sans min-h-[140px]">
+              {/* Active Tab Content with Fade-In Animation */}
+              <div
+                key={activeThesisTab}
+                className="animate-fade-in p-5 rounded-2xl bg-[#060810]/80 border border-white/[0.06] text-xs leading-relaxed text-slate-300 font-sans min-h-[140px] shadow-inner"
+              >
                 {activeThesisTab === 'exec' && (
                   <div className="space-y-2">
                     <div className="font-bold text-slate-200 text-sm">Portfolio Manager Summary</div>

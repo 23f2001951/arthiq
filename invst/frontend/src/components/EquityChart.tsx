@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { TrendingUp, ShieldAlert, Award, Calendar } from 'lucide-react';
+import { TrendingUp, ShieldAlert, Award, Calendar, Zap } from 'lucide-react';
 
 interface EquityChartProps {
   dates: string[];
@@ -48,8 +48,9 @@ export const EquityChart: React.FC<EquityChartProps> = ({
 
   if (!curDates || curDates.length === 0 || pVals.length === 0) {
     return (
-      <div className="h-64 flex items-center justify-center text-sm text-slate-500 glass-card rounded-2xl border border-slate-800">
-        No equity curve data available
+      <div className="h-64 flex flex-col items-center justify-center text-sm text-slate-500 glass-panel rounded-2xl border border-white/[0.06]">
+        <Zap className="w-8 h-8 text-slate-600 mb-2 animate-pulse" />
+        <span>No equity curve data available for this range</span>
       </div>
     );
   }
@@ -67,36 +68,103 @@ export const EquityChart: React.FC<EquityChartProps> = ({
 
   const minDD = Math.min(...drawdowns, -5);
 
-  const width = 850;
-  const mainHeight = 280;
-  const ddHeight = showDrawdown ? 90 : 0;
-  const totalHeight = mainHeight + ddHeight + 10;
-  const padding = { top: 20, right: 25, bottom: 30, left: 55 };
+  const width = 880;
+  const mainHeight = 290;
+  const ddHeight = showDrawdown ? 95 : 0;
+  const totalHeight = mainHeight + ddHeight + 16;
+  const padding = { top: 24, right: 30, bottom: 32, left: 60 };
   const chartW = width - padding.left - padding.right;
   const mainChartH = mainHeight - padding.top - padding.bottom;
 
   const getX = (idx: number) => padding.left + (idx / (curDates.length - 1 || 1)) * chartW;
   const getY = (val: number) => padding.top + mainChartH - ((val - minVal) / range) * mainChartH;
-  const getDDY = (val: number) => mainHeight + 10 + (Math.abs(val) / Math.abs(minDD || 1)) * (ddHeight - 25);
+  const getDDY = (val: number) => mainHeight + 12 + (Math.abs(val) / Math.abs(minDD || 1)) * (ddHeight - 30);
 
-  const buildPath = (series: number[]) => {
-    return series
-      .map((val, idx) => `${idx === 0 ? 'M' : 'L'} ${getX(idx).toFixed(1)},${getY(val).toFixed(1)}`)
-      .join(' ');
+  // Smooth spline generator (Catmull-Rom to Cubic Bezier)
+  const buildSmoothPath = (series: number[]) => {
+    if (series.length === 0) return '';
+    if (series.length === 1) return `M ${getX(0).toFixed(1)},${getY(series[0]).toFixed(1)}`;
+
+    const points = series.map((val, idx) => ({ x: getX(idx), y: getY(val) }));
+    let path = `M ${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
+
+    for (let i = 0; i < points.length - 1; i++) {
+      const p0 = i > 0 ? points[i - 1] : points[i];
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const p3 = i < points.length - 2 ? points[i + 2] : p2;
+
+      const tension = 0.18;
+      const cp1x = p1.x + (p2.x - p0.x) * tension;
+      const cp1y = p1.y + (p2.y - p0.y) * tension;
+      const cp2x = p2.x - (p3.x - p1.x) * tension;
+      const cp2y = p2.y - (p3.y - p1.y) * tension;
+
+      path += ` C ${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
+    }
+    return path;
   };
 
-  const pPath = buildPath(pNorm);
-  const bPath = buildPath(bNorm);
+  const buildSmoothDrawdownPath = (dd: number[]) => {
+    if (dd.length === 0) return '';
+    const points = dd.map((val, idx) => ({ x: getX(idx), y: getDDY(val) }));
+    let path = `M ${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
+
+    for (let i = 0; i < points.length - 1; i++) {
+      const p0 = i > 0 ? points[i - 1] : points[i];
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const p3 = i < points.length - 2 ? points[i + 2] : p2;
+
+      const tension = 0.18;
+      const cp1x = p1.x + (p2.x - p0.x) * tension;
+      const cp1y = p1.y + (p2.y - p0.y) * tension;
+      const cp2x = p2.x - (p3.x - p1.x) * tension;
+      const cp2y = p2.y - (p3.y - p1.y) * tension;
+
+      path += ` C ${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
+    }
+    return path;
+  };
+
+  const pPath = buildSmoothPath(pNorm);
+  const bPath = buildSmoothPath(bNorm);
 
   // Strategy Area Fill
-  const pArea = `${pPath} L ${getX(curDates.length - 1)},${padding.top + mainChartH} L ${getX(0)},${padding.top + mainChartH} Z`;
+  const pArea = `${pPath} L ${getX(curDates.length - 1).toFixed(1)},${padding.top + mainChartH} L ${getX(0).toFixed(1)},${padding.top + mainChartH} Z`;
 
   // Drawdown Area Fill
+  const ddSmoothLine = showDrawdown ? buildSmoothDrawdownPath(drawdowns) : '';
   const ddArea = showDrawdown
-    ? `M ${getX(0)},${mainHeight + 10} ` +
-      drawdowns.map((d, i) => `L ${getX(i).toFixed(1)},${getDDY(d).toFixed(1)}`).join(' ') +
-      ` L ${getX(curDates.length - 1)},${mainHeight + 10} Z`
+    ? `M ${getX(0).toFixed(1)},${mainHeight + 12} ` +
+      ddSmoothLine.replace(/^M [^ ]+ /, 'L ') +
+      ` L ${getX(curDates.length - 1).toFixed(1)},${mainHeight + 12} Z`
     : '';
+
+  // Calculate Peak & Max Drawdown indices
+  const maxPIdx = useMemo(() => {
+    let maxV = -Infinity;
+    let idx = 0;
+    pNorm.forEach((v, i) => {
+      if (v > maxV) {
+        maxV = v;
+        idx = i;
+      }
+    });
+    return idx;
+  }, [pNorm]);
+
+  const maxDDIdx = useMemo(() => {
+    let minD = Infinity;
+    let idx = 0;
+    drawdowns.forEach((d, i) => {
+      if (d < minD) {
+        minD = d;
+        idx = i;
+      }
+    });
+    return idx;
+  }, [drawdowns]);
 
   const activeIdx = hoverIndex !== null ? hoverIndex : curDates.length - 1;
   const activeDate = curDates[activeIdx];
@@ -106,8 +174,8 @@ export const EquityChart: React.FC<EquityChartProps> = ({
   const activeBNorm = bNorm[activeIdx];
   const activeDD = drawdowns[activeIdx];
 
-  const pTotalRet = (pNorm[pNorm.length - 1] - 100);
-  const bTotalRet = (bNorm[bNorm.length - 1] - 100);
+  const pTotalRet = pNorm[pNorm.length - 1] - 100;
+  const bTotalRet = bNorm[bNorm.length - 1] - 100;
   const alpha = pTotalRet - bTotalRet;
 
   // Y-axis ticks
@@ -126,54 +194,68 @@ export const EquityChart: React.FC<EquityChartProps> = ({
   ];
 
   return (
-    <div className="glass-card rounded-2xl p-6 border border-slate-800 shadow-2xl space-y-4">
+    <div className="glass-panel p-6 rounded-3xl relative overflow-hidden space-y-4">
+      {/* Background ambient beam */}
+      <div className="absolute top-0 right-1/4 w-96 h-40 bg-emerald-500/5 blur-3xl pointer-events-none" />
+
       {/* Header & Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
+      <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-white/[0.08] relative z-10">
         <div>
-          <div className="flex items-center space-x-2">
-            <h3 className="text-base font-black tracking-tight text-white flex items-center">
-              <TrendingUp className="w-5 h-5 mr-2 text-emerald-400" />
-              Cumulative Equity & Underwater Drawdown
-            </h3>
-            <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
-              Indexed (Base 100)
-            </span>
+          <div className="flex items-center space-x-2.5">
+            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+              <TrendingUp className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-base font-extrabold tracking-tight text-white flex items-center">
+                Cumulative Equity &amp; Underwater Drawdown
+                <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-mono">
+                  Base 100
+                </span>
+              </h3>
+              <p className="text-[11px] text-slate-400">
+                Walk-forward cumulative net-of-costs performance vs benchmark
+              </p>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-4 mt-2 text-xs">
+          <div className="flex flex-wrap items-center gap-4 mt-3 text-xs">
             {/* Strategy Pill */}
-            <div className="flex items-center space-x-1.5 font-bold text-emerald-400">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-md shadow-emerald-400/50" />
+            <div className="flex items-center space-x-2 px-2.5 py-1 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 font-bold font-mono">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
               <span>Strategy: {pTotalRet >= 0 ? `+${pTotalRet.toFixed(1)}%` : `${pTotalRet.toFixed(1)}%`}</span>
             </div>
 
             {/* Benchmark Pill */}
-            <div className="flex items-center space-x-1.5 font-medium text-slate-400">
-              <span className="w-2.5 h-2.5 rounded-full bg-slate-500" />
+            <div className="flex items-center space-x-2 px-2.5 py-1 rounded-lg bg-slate-900/60 border border-slate-700/60 text-slate-300 font-medium font-mono">
+              <span className="w-2.5 h-2.5 rounded-full bg-slate-400" />
               <span>{benchmarkLabel}: {bTotalRet >= 0 ? `+${bTotalRet.toFixed(1)}%` : `${bTotalRet.toFixed(1)}%`}</span>
             </div>
 
             {/* Alpha Badge */}
-            <div className={`px-2 py-0.5 rounded-full font-bold text-[11px] flex items-center space-x-1 ${
-              alpha >= 0 ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/10 text-rose-300 border border-rose-500/30'
-            }`}>
-              <Award className="w-3 h-3 mr-0.5" />
+            <div
+              className={`px-2.5 py-1 rounded-lg font-bold text-xs font-mono flex items-center space-x-1.5 ${
+                alpha >= 0
+                  ? 'bg-sky-500/15 text-sky-300 border border-sky-500/30'
+                  : 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
+              }`}
+            >
+              <Award className="w-3.5 h-3.5" />
               <span>Alpha: {alpha >= 0 ? `+${alpha.toFixed(1)}%` : `${alpha.toFixed(1)}%`}</span>
             </div>
           </div>
         </div>
 
         {/* Toolbar: Timeframe & Drawdown Toggle */}
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2.5">
           {/* Timeframe selector */}
-          <div className="flex items-center p-1 bg-slate-950 rounded-xl border border-slate-800 text-xs">
+          <div className="flex items-center p-1 bg-[#05070d] rounded-xl border border-white/[0.08] shadow-inner text-xs">
             {(['1Y', '3Y', '5Y', 'ALL'] as const).map((rangeKey) => (
               <button
                 key={rangeKey}
                 onClick={() => setTimeRange(rangeKey)}
-                className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                className={`px-3 py-1 rounded-lg font-mono font-bold transition-all duration-200 cursor-pointer ${
                   timeRange === rangeKey
-                    ? 'bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-950 shadow'
+                    ? 'bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 shadow-[0_0_12px_rgba(16,185,129,0.4)]'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
@@ -184,10 +266,10 @@ export const EquityChart: React.FC<EquityChartProps> = ({
 
           <button
             onClick={() => setShowDrawdown(!showDrawdown)}
-            className={`flex items-center space-x-1 px-3 py-1.5 rounded-xl border text-xs font-bold transition-colors ${
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
               showDrawdown
-                ? 'bg-rose-950/40 border-rose-800 text-rose-300'
-                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                ? 'bg-rose-950/40 border-rose-700/60 text-rose-300 shadow-[0_0_12px_rgba(244,63,94,0.25)]'
+                : 'bg-[#05070d] border-white/[0.08] text-slate-400 hover:text-slate-200'
             }`}
           >
             <ShieldAlert className="w-3.5 h-3.5" />
@@ -196,15 +278,20 @@ export const EquityChart: React.FC<EquityChartProps> = ({
         </div>
       </div>
 
-      {/* Floating Hover Crosshair Inspector Card */}
-      <div className="flex flex-wrap items-center justify-between p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-xs">
+      {/* Interactive HUD Readout Banner */}
+      <div className="flex flex-wrap items-center justify-between p-3.5 rounded-2xl bg-[#070912]/90 border border-white/[0.08] text-xs shadow-lg backdrop-blur-md">
         <div className="flex items-center space-x-2">
-          <Calendar className="w-3.5 h-3.5 text-slate-500" />
-          <span className="font-mono font-bold text-white">{activeDate}</span>
+          <Calendar className="w-3.5 h-3.5 text-sky-400" />
+          <span className="font-mono font-bold text-white text-xs">{activeDate}</span>
+          {activeIdx === curDates.length - 1 && (
+            <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+              LATEST
+            </span>
+          )}
         </div>
-        <div className="flex items-center space-x-5 font-mono text-xs">
+        <div className="flex flex-wrap items-center gap-4 sm:gap-6 font-mono text-xs">
           <div>
-            <span className="text-slate-400 mr-1.5">Strategy:</span>
+            <span className="text-slate-400 mr-1.5">Strategy NAV:</span>
             <span className="font-bold text-emerald-400">
               ₹{activeP.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
             </span>
@@ -219,8 +306,8 @@ export const EquityChart: React.FC<EquityChartProps> = ({
           </div>
           {showDrawdown && (
             <div>
-              <span className="text-slate-400 mr-1.5">DD:</span>
-              <span className="font-bold text-rose-400">
+              <span className="text-slate-400 mr-1.5">Underwater DD:</span>
+              <span className={`font-bold ${activeDD < -10 ? 'text-rose-400' : 'text-amber-400'}`}>
                 {activeDD.toFixed(2)}%
               </span>
             </div>
@@ -229,31 +316,43 @@ export const EquityChart: React.FC<EquityChartProps> = ({
       </div>
 
       {/* High-Performance SVG Chart */}
-      <div className="relative w-full overflow-hidden">
+      <div className="relative w-full overflow-hidden select-none">
         <svg
           viewBox={`0 0 ${width} ${totalHeight}`}
-          className="w-full h-auto select-none"
+          className="w-full h-auto"
           onMouseMove={(e) => {
             const rect = e.currentTarget.getBoundingClientRect();
             const relX = ((e.clientX - rect.left) / rect.width) * width - padding.left;
             const idx = Math.round((relX / chartW) * (curDates.length - 1));
-            if (idx >= 0 && idx < curDates.length) setHoverIndex(idx);
+            if (idx >= 0 && idx < curDates.length) {
+              setHoverIndex(idx);
+            }
           }}
-          onMouseLeave={() => setHoverIndex(null)}
+          onMouseLeave={() => {
+            setHoverIndex(null);
+          }}
         >
           <defs>
             {/* Strategy Glowing Gradient Fill */}
-            <linearGradient id="strategyGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#10b981" stopOpacity="0.30" />
+            <linearGradient id="eqStrategyGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#10b981" stopOpacity="0.32" />
               <stop offset="60%" stopColor="#06b6d4" stopOpacity="0.08" />
               <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
             </linearGradient>
 
             {/* Drawdown Area Gradient */}
-            <linearGradient id="drawdownGrad" x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id="eqDrawdownGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#f43f5e" stopOpacity="0.0" />
-              <stop offset="100%" stopColor="#f43f5e" stopOpacity="0.35" />
+              <stop offset="100%" stopColor="#f43f5e" stopOpacity="0.4" />
             </linearGradient>
+
+            {/* Neon Glow Filters */}
+            <filter id="emeraldLineGlow" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor="#10b981" floodOpacity="0.6" />
+            </filter>
+            <filter id="skyLineGlow" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor="#38bdf8" floodOpacity="0.6" />
+            </filter>
           </defs>
 
           {/* Grid lines */}
@@ -264,8 +363,9 @@ export const EquityChart: React.FC<EquityChartProps> = ({
                 y1={t.y}
                 x2={width - padding.right}
                 y2={t.y}
-                stroke="#1e293b"
-                strokeDasharray="3 3"
+                stroke="#172033"
+                strokeDasharray="4 4"
+                strokeWidth="1"
               />
               <text
                 x={padding.left - 10}
@@ -274,14 +374,15 @@ export const EquityChart: React.FC<EquityChartProps> = ({
                 fontSize="10"
                 fill="#64748b"
                 fontFamily="monospace"
+                fontWeight="600"
               >
                 {t.val}
               </text>
             </g>
           ))}
 
-          {/* Strategy Gradient Fill */}
-          <path d={pArea} fill="url(#strategyGrad)" />
+          {/* Strategy Gradient Fill Area */}
+          <path d={pArea} fill="url(#eqStrategyGrad)" />
 
           {/* Benchmark line */}
           <path
@@ -293,35 +394,74 @@ export const EquityChart: React.FC<EquityChartProps> = ({
             className="transition-all"
           />
 
-          {/* Portfolio Strategy Line with glow */}
+          {/* Portfolio Strategy Line with glow filter */}
           <path
             d={pPath}
             fill="none"
             stroke="#10b981"
             strokeWidth="2.75"
             strokeLinecap="round"
+            strokeLinejoin="round"
+            filter="url(#emeraldLineGlow)"
             className="transition-all"
           />
+
+          {/* Peak ATH Marker on Strategy Line */}
+          {maxPIdx >= 0 && maxPIdx < curDates.length && (
+            <g>
+              <circle
+                cx={getX(maxPIdx)}
+                cy={getY(pNorm[maxPIdx])}
+                r="4"
+                fill="#34d399"
+                stroke="#064e3b"
+                strokeWidth="2"
+              />
+              <rect
+                x={getX(maxPIdx) - 22}
+                y={getY(pNorm[maxPIdx]) - 20}
+                width="44"
+                height="14"
+                rx="4"
+                fill="#064e3b"
+                stroke="#34d399"
+                strokeWidth="1"
+              />
+              <text
+                x={getX(maxPIdx)}
+                y={getY(pNorm[maxPIdx]) - 10}
+                textAnchor="middle"
+                fontSize="8"
+                fill="#a7f3d0"
+                fontFamily="monospace"
+                fontWeight="bold"
+              >
+                ATH PEAK
+              </text>
+            </g>
+          )}
 
           {/* Underwater Drawdown Section */}
           {showDrawdown && (
             <g>
-              {/* Separator line */}
+              {/* Separator / 0% Waterline */}
               <line
                 x1={padding.left}
-                y1={mainHeight + 10}
+                y1={mainHeight + 12}
                 x2={width - padding.right}
-                y2={mainHeight + 10}
+                y2={mainHeight + 12}
                 stroke="#334155"
-                strokeWidth="1"
+                strokeWidth="1.2"
+                strokeDasharray="3 3"
               />
               <text
                 x={padding.left - 10}
-                y={mainHeight + 14}
+                y={mainHeight + 16}
                 textAnchor="end"
                 fontSize="9"
                 fill="#94a3b8"
                 fontFamily="monospace"
+                fontWeight="bold"
               >
                 0%
               </text>
@@ -332,21 +472,55 @@ export const EquityChart: React.FC<EquityChartProps> = ({
                 fontSize="9"
                 fill="#f43f5e"
                 fontFamily="monospace"
+                fontWeight="bold"
               >
                 {minDD.toFixed(0)}%
               </text>
 
-              {/* Drawdown Area */}
-              <path d={ddArea} fill="url(#drawdownGrad)" />
+              {/* Drawdown Area & Smooth Line */}
+              <path d={ddArea} fill="url(#eqDrawdownGrad)" />
               <path
-                d={
-                  `M ${getX(0)},${getDDY(drawdowns[0])} ` +
-                  drawdowns.map((d, i) => `L ${getX(i).toFixed(1)},${getDDY(d).toFixed(1)}`).join(' ')
-                }
+                d={ddSmoothLine}
                 fill="none"
                 stroke="#f43f5e"
-                strokeWidth="1.5"
+                strokeWidth="1.75"
+                strokeLinecap="round"
               />
+
+              {/* Max Drawdown Trough Flag */}
+              {maxDDIdx >= 0 && maxDDIdx < curDates.length && minDD < -3 && (
+                <g>
+                  <circle
+                    cx={getX(maxDDIdx)}
+                    cy={getDDY(drawdowns[maxDDIdx])}
+                    r="3.5"
+                    fill="#f43f5e"
+                    stroke="#450a0a"
+                    strokeWidth="2"
+                  />
+                  <rect
+                    x={getX(maxDDIdx) - 26}
+                    y={getDDY(drawdowns[maxDDIdx]) + 6}
+                    width="52"
+                    height="14"
+                    rx="4"
+                    fill="#450a0a"
+                    stroke="#f43f5e"
+                    strokeWidth="1"
+                  />
+                  <text
+                    x={getX(maxDDIdx)}
+                    y={getDDY(drawdowns[maxDDIdx]) + 16}
+                    textAnchor="middle"
+                    fontSize="8"
+                    fill="#fecdd3"
+                    fontFamily="monospace"
+                    fontWeight="bold"
+                  >
+                    MAX DD {drawdowns[maxDDIdx].toFixed(1)}%
+                  </text>
+                </g>
+              )}
             </g>
           )}
 
@@ -362,6 +536,7 @@ export const EquityChart: React.FC<EquityChartProps> = ({
                 fontSize="10"
                 fill="#64748b"
                 fontFamily="monospace"
+                fontWeight="600"
               >
                 {curDates[idx]}
               </text>
@@ -371,38 +546,44 @@ export const EquityChart: React.FC<EquityChartProps> = ({
           {/* Hover Crosshair & Pointer Dots */}
           {hoverIndex !== null && (
             <g>
+              {/* Vertical Guide Line */}
               <line
                 x1={getX(hoverIndex)}
                 y1={padding.top}
                 x2={getX(hoverIndex)}
                 y2={showDrawdown ? mainHeight + ddHeight : mainHeight - padding.bottom}
                 stroke="#38bdf8"
-                strokeWidth="1"
-                strokeDasharray="2 2"
+                strokeWidth="1.2"
+                strokeDasharray="3 3"
               />
+
               {/* Portfolio Node */}
               <circle
                 cx={getX(hoverIndex)}
                 cy={getY(pNorm[hoverIndex])}
-                r="5"
+                r="6"
                 fill="#10b981"
-                stroke="#022c22"
-                strokeWidth="2.5"
+                stroke="#042f2e"
+                strokeWidth="3"
+                className="animate-pulse"
               />
+
               {/* Benchmark Node */}
               <circle
                 cx={getX(hoverIndex)}
                 cy={getY(bNorm[hoverIndex])}
-                r="4"
-                fill="#64748b"
+                r="4.5"
+                fill="#94a3b8"
                 stroke="#0f172a"
-                strokeWidth="2"
+                strokeWidth="2.5"
               />
+
+              {/* Drawdown Node */}
               {showDrawdown && (
                 <circle
                   cx={getX(hoverIndex)}
                   cy={getDDY(drawdowns[hoverIndex])}
-                  r="3.5"
+                  r="4.5"
                   fill="#f43f5e"
                   stroke="#450a0a"
                   strokeWidth="2"
@@ -415,3 +596,5 @@ export const EquityChart: React.FC<EquityChartProps> = ({
     </div>
   );
 };
+
+export default EquityChart;

@@ -213,16 +213,21 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
                 <div key={item.id} className="relative group">
                   <button
                     onClick={() => onSelectTab(item.id)}
-                    className={`w-full flex items-center rounded-xl transition-all duration-200 cursor-pointer ${
+                    className={`w-full flex items-center rounded-xl transition-all duration-200 cursor-pointer relative overflow-hidden ${
                       isCollapsed
                         ? 'justify-center p-3.5'
                         : 'justify-between px-3.5 py-2.5'
                     } ${
                       isActive
-                        ? 'bg-gradient-to-r from-winsor-700 to-winsor-600 text-white shadow-[0_0_18px_rgba(37,99,235,0.45)] border border-sky-400/40'
-                        : 'text-slate-400 hover:text-slate-100 hover:bg-white/[0.04]'
+                        ? 'bg-gradient-to-r from-winsor-700 via-winsor-600 to-sky-600 text-white shadow-[0_0_20px_rgba(37,99,235,0.45)] border border-sky-400/50'
+                        : 'text-slate-400 hover:text-slate-100 hover:bg-white/[0.05] hover:border-white/[0.08] border border-transparent'
                     }`}
                   >
+                    {/* Glowing Left Indicator Pip for Active Tab */}
+                    {isActive && (
+                      <span className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r-full bg-white shadow-[0_0_10px_#ffffff]" />
+                    )}
+
                     <div className="flex items-center space-x-3 truncate">
                       <Icon
                         className={`w-5 h-5 shrink-0 transition-transform group-hover:scale-110 ${
@@ -230,7 +235,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
                         }`}
                       />
                       {!isCollapsed && (
-                        <span className="text-xs font-semibold tracking-tight truncate">
+                        <span className="text-xs font-bold tracking-tight truncate">
                           {item.label}
                         </span>
                       )}
@@ -240,7 +245,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
                       <span
                         className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-md border uppercase ${
                           isActive
-                            ? 'bg-white/20 text-white border-white/30'
+                            ? 'bg-black/30 text-white border-white/30 shadow-inner'
                             : item.badgeColor || 'bg-white/[0.04] text-slate-400 border-white/[0.08]'
                         }`}
                       >
