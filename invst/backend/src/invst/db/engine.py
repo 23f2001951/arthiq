@@ -14,9 +14,9 @@ from __future__ import annotations
 import logging
 import os
 import re
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,13 @@ TABLE_PK_MAP: dict[str, list[str]] = {
     "backtest_runs": ["run_id"],
     "model_predictions": ["asof_date", "symbol", "model_name"],
     "index_constituents_history": ["effective_date", "symbol"],
+    "mf_schemes": ["scheme_code"],
+    "mf_nav_history": ["scheme_code", "nav_date"],
+    "mf_holdings": ["scheme_code", "as_of_date", "company_name"],
+    "user_mf_portfolios": ["id"],
+    "mf_sip_schedules": ["id"],
+    "mf_transactions": ["id"],
+    "mf_sip_checkins": ["id"],
 }
 
 
@@ -45,6 +52,9 @@ def get_database_url() -> str | None:
     """Retrieve the configured database URL from environment or .env file."""
     # During automated pytest runs, default to offline local database unless explicitly forced
     if "PYTEST_CURRENT_TEST" in os.environ and "FORCE_NEON_TEST" not in os.environ:
+        return None
+
+    if os.environ.get("USE_LOCAL_DB") == "1":
         return None
 
     url = os.environ.get("DATABASE_URL") or os.environ.get("NEON_DATABASE_URL")
@@ -132,6 +142,20 @@ def adapt_sql(sql: str) -> str:
         else:
             s = re.sub(r"INSERT\s+OR\s+REPLACE\s+INTO", "INSERT INTO", s, count=1, flags=re.IGNORECASE)
 
+    # 2.5 Transform SQLite date arithmetic like date(col, '-14 days') or date(?, '-' || ? || ' days')
+    s = re.sub(
+        r"\bdate\s*\(\s*([^,]+?)\s*,\s*'-'\s*\|\|\s*([^,]+?)\s*\|\|\s*'\s*days'\s*\)",
+        r"((\1)::date - ((\2)::text || ' days')::interval)::date",
+        s,
+        flags=re.IGNORECASE,
+    )
+    s = re.sub(
+        r"\bdate\s*\(\s*([^,]+?)\s*,\s*'-(\d+)\s*days'\s*\)",
+        r"((\1)::date - interval '\2 days')::date",
+        s,
+        flags=re.IGNORECASE,
+    )
+
     # 3. Replace '?' parameter placeholders with '%s' outside quotes
     result: list[str] = []
     in_single = False
@@ -150,7 +174,7 @@ def adapt_sql(sql: str) -> str:
     return "".join(result)
 
 
-class Row(Mapping[str, Any]):
+class Row(Sequence[Any]):
     """sqlite3.Row-compatible dictionary and indexable mapping for PostgreSQL results."""
 
     __slots__ = ("_keys", "_values", "_mapping", "_mapping_lower")
@@ -162,7 +186,7 @@ class Row(Mapping[str, Any]):
         self._mapping_lower = {k.lower(): v for k, v in zip(self._keys, self._values)}
 
     def __getitem__(self, item: Any) -> Any:
-        if isinstance(item, int):
+        if isinstance(item, (int, slice)):
             return self._values[item]
         if isinstance(item, str):
             if item in self._mapping:
@@ -170,13 +194,15 @@ class Row(Mapping[str, Any]):
             if item.lower() in self._mapping_lower:
                 return self._mapping_lower[item.lower()]
             raise KeyError(item)
-        raise TypeError(f"Row indices must be integers or strings, not {type(item).__name__}")
+        raise TypeError(f"Row indices must be integers, slices, or strings, not {type(item).__name__}")
 
     def __len__(self) -> int:
         return len(self._values)
 
-    def __iter__(self) -> Iterator[str]:
-        return iter(self._keys)
+    def __iter__(self) -> Iterator[Any]:
+        # Sequence protocol: must iterate over column values (like sqlite3.Row)
+        # to support tuple unpacking `(a, b) = row` and parameter passing `tuple(row)`.
+        return iter(self._values)
 
     def keys(self) -> list[str]:
         return list(self._keys)
@@ -194,8 +220,8 @@ class Row(Mapping[str, Any]):
 
     def __contains__(self, key: object) -> bool:
         if isinstance(key, str):
-            return key in self._mapping or key.lower() in self._mapping_lower
-        return False
+            return key in self._mapping or key.lower() in self._mapping_lower or key in self._values
+        return key in self._values
 
     def __repr__(self) -> str:
         return f"<Row {self._mapping}>"
@@ -251,13 +277,51 @@ class PostgresCursorWrapper:
             else:
                 self._cur.execute(adapted)
         except Exception as exc:
+            err_msg = str(exc).lower()
+            # If server closed connection unexpectedly or connection is closed, attempt one reconnect & retry
+            if "closed" in err_msg or "terminated" in err_msg or "connection" in err_msg:
+                logger.warning("Postgres connection lost during execute (%s). Reconnecting and retrying once...", exc)
+                try:
+                    raw_conn = self._conn_wrapper._get_raw_conn(force_reconnect=True)
+                    self._cur = raw_conn.cursor()
+                    if params is not None:
+                        self._cur.execute(adapted, tuple(params))
+                    else:
+                        self._cur.execute(adapted)
+                    return self
+                except Exception as retry_exc:
+                    logger.error("Retry after reconnect failed: %s", retry_exc)
+
             logger.error("Failed to execute adapted SQL on Postgres:\nSQL: %s\nAdapted: %s\nError: %s", sql, adapted, exc)
+            try:
+                self._conn_wrapper.rollback()
+            except Exception:
+                pass
             raise
         return self
 
     def executemany(self, sql: str, seq_of_parameters: Sequence[Sequence[Any]]) -> PostgresCursorWrapper:
         adapted = adapt_sql(sql)
-        self._cur.executemany(adapted, [tuple(p) for p in seq_of_parameters])
+        try:
+            self._cur.executemany(adapted, [tuple(p) for p in seq_of_parameters])
+        except Exception as exc:
+            err_msg = str(exc).lower()
+            if "closed" in err_msg or "terminated" in err_msg or "connection" in err_msg:
+                logger.warning("Postgres connection lost during executemany (%s). Reconnecting and retrying once...", exc)
+                try:
+                    raw_conn = self._conn_wrapper._get_raw_conn(force_reconnect=True)
+                    self._cur = raw_conn.cursor()
+                    self._cur.executemany(adapted, [tuple(p) for p in seq_of_parameters])
+                    return self
+                except Exception as retry_exc:
+                    logger.error("Retry after reconnect failed: %s", retry_exc)
+
+            logger.error("Failed to execute adapted SQL on Postgres:\nSQL: %s\nAdapted: %s\nError: %s", sql, adapted, exc)
+            try:
+                self._conn_wrapper.rollback()
+            except Exception:
+                pass
+            raise
         return self
 
     def fetchone(self) -> Row | None:
@@ -282,7 +346,10 @@ class PostgresCursorWrapper:
             yield Row(desc, row)
 
     def close(self) -> None:
-        self._cur.close()
+        try:
+            self._cur.close()
+        except Exception:
+            pass
 
     def __enter__(self) -> PostgresCursorWrapper:
         return self
@@ -292,23 +359,73 @@ class PostgresCursorWrapper:
 
 
 class PostgresConnectionWrapper:
-    """Connection wrapper for psycopg2 that mimics sqlite3.Connection."""
+    """Connection wrapper for psycopg2 that mimics sqlite3.Connection with auto-reconnection."""
 
-    def __init__(self, raw_conn: Any) -> None:
+    def __init__(self, raw_conn: Any, connect_url: str | None = None) -> None:
         self._raw_conn = raw_conn
+        self._connect_url = connect_url
         self.row_factory = None
+        if self._raw_conn:
+            try:
+                self._raw_conn.autocommit = True
+            except Exception:
+                pass
+
+    def _get_raw_conn(self, force_reconnect: bool = False) -> Any:
+        """Return healthy connection, automatically reconnecting to Neon if disconnected."""
+        is_broken = force_reconnect
+        if not is_broken:
+            try:
+                if self._raw_conn is None or getattr(self._raw_conn, "closed", 1) != 0:
+                    is_broken = True
+                else:
+                    with self._raw_conn.cursor() as cur:
+                        cur.execute("SELECT 1")
+            except Exception:
+                is_broken = True
+
+        if is_broken and self._connect_url:
+            import psycopg2
+            logger.info("Re-establishing PostgreSQL connection to %s...", self._connect_url.split("@")[-1] if "@" in self._connect_url else "database")
+            try:
+                self._raw_conn = psycopg2.connect(
+                    self._connect_url,
+                    connect_timeout=10,
+                    keepalives=1,
+                    keepalives_idle=30,
+                    keepalives_interval=10,
+                    keepalives_count=5,
+                )
+                self._raw_conn.autocommit = True
+            except Exception as exc:
+                logger.error("Failed to re-establish PostgreSQL connection: %s", exc)
+                raise
+        return self._raw_conn
 
     def cursor(self) -> PostgresCursorWrapper:
-        return PostgresCursorWrapper(self._raw_conn.cursor(), self)
+        raw_conn = self._get_raw_conn()
+        return PostgresCursorWrapper(raw_conn.cursor(), self)
 
     def commit(self) -> None:
-        self._raw_conn.commit()
+        try:
+            if self._raw_conn and not getattr(self._raw_conn, "closed", 1) and not getattr(self._raw_conn, "autocommit", False):
+                self._raw_conn.commit()
+        except Exception:
+            pass
 
     def rollback(self) -> None:
-        self._raw_conn.rollback()
+        try:
+            if self._raw_conn and not getattr(self._raw_conn, "closed", 1) and not getattr(self._raw_conn, "autocommit", False):
+                self._raw_conn.rollback()
+        except Exception:
+            pass
 
     def close(self) -> None:
-        self._raw_conn.close()
+        try:
+            if self._raw_conn and not getattr(self._raw_conn, "closed", 1):
+                self._raw_conn.close()
+        except Exception:
+            pass
 
     def execute(self, sql: str, params: Sequence[Any] | None = None) -> PostgresCursorWrapper:
         cur = self.cursor()
@@ -342,16 +459,24 @@ def get_db_connection(
     target_url = db_url or get_database_url()
 
     if target_url and is_postgres(target_url):
-        import psycopg2
-
         # Replace postgres:// with postgresql:// if needed for psycopg2
         clean_url = target_url
         if clean_url.startswith("postgres://"):
             clean_url = "postgresql://" + clean_url[len("postgres://") :]
 
         try:
-            raw_conn = psycopg2.connect(clean_url, connect_timeout=5)
-            return PostgresConnectionWrapper(raw_conn)
+            import psycopg2
+
+            raw_conn = psycopg2.connect(
+                clean_url,
+                connect_timeout=10,
+                keepalives=1,
+                keepalives_idle=30,
+                keepalives_interval=10,
+                keepalives_count=5,
+            )
+            raw_conn.autocommit = True
+            return PostgresConnectionWrapper(raw_conn, connect_url=clean_url)
         except Exception as exc:
             clean_host = clean_url.split("@")[-1] if "@" in clean_url else "database"
             logger.warning(

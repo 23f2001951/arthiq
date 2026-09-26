@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 
 
 @dataclass(frozen=True)
@@ -661,16 +661,17 @@ class PointInTimeDataAccess:
         list[SentimentRow]
             Ordered newest-first by ``published_at``.
         """
+        lookback_date = (self._asof - timedelta(days=lookback_days)).isoformat()
         rows = self._conn.execute(
             """
             SELECT headline_id, published_at, headline, source, sentiment_score
             FROM news_sentiment
             WHERE symbol = ?
               AND published_at <= ?
-              AND published_at >= date(?, '-' || ? || ' days')
+              AND published_at >= ?
             ORDER BY published_at DESC
             """,
-            (symbol, self._asof.isoformat(), self._asof.isoformat(), str(lookback_days)),
+            (symbol, self._asof.isoformat(), lookback_date),
         ).fetchall()
         return [
             SentimentRow(
@@ -698,6 +699,7 @@ class PointInTimeDataAccess:
         float or None
             Average sentiment in ``[-1, +1]``, or ``None`` if no data.
         """
+        lookback_date = (self._asof - timedelta(days=lookback_days)).isoformat()
         try:
             row = self._conn.execute(
                 """
@@ -705,13 +707,13 @@ class PointInTimeDataAccess:
                 FROM news_sentiment
                 WHERE symbol = ?
                   AND published_at <= ?
-                  AND published_at >= date(?, '-' || ? || ' days')
+                  AND published_at >= ?
                   AND sentiment_score IS NOT NULL
                 """,
-                (symbol, self._asof.isoformat(), self._asof.isoformat(), str(lookback_days)),
+                (symbol, self._asof.isoformat(), lookback_date),
             ).fetchone()
             return row[0] if row and row[0] is not None else None
-        except sqlite3.OperationalError:
+        except Exception:
             return None
 
     # ------------------------------------------------------------------

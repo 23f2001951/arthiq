@@ -319,8 +319,15 @@ def revoke_session(token: str | None) -> None:
 # -------------------------------------------------------------------------
 # Database Initialization & User Store
 # -------------------------------------------------------------------------
+_USERS_TABLE_INITIALIZED = False
+
+
 def init_users_table(conn: sqlite3.Connection | None = None) -> None:
     """Ensure users table exists and bootstrap initial admin user if table empty."""
+    global _USERS_TABLE_INITIALIZED
+    if conn is None and _USERS_TABLE_INITIALIZED:
+        return
+
     should_close = False
     if conn is None:
         from invst.db.engine import get_db_connection
@@ -372,6 +379,7 @@ def init_users_table(conn: sqlite3.Connection | None = None) -> None:
             )
             conn.commit()
             logger.info("Bootstrapped master admin user: %s (status: %s)", admin_email, admin_status)
+        _USERS_TABLE_INITIALIZED = True
     finally:
         if should_close and conn is not None:
             conn.close()

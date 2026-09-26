@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -85,13 +85,14 @@ def check_fundamentals_freshness(
 ) -> QualityCheckResult:
     """Check that at least 70% of active stocks have fundamentals disclosed within 120 days."""
     target_date = asof or date.today()
+    cutoff_date = (target_date - timedelta(days=120)).isoformat()
     cur = conn.execute(
         """
         SELECT COUNT(DISTINCT symbol)
         FROM fundamentals_quarterly
-        WHERE disclosed_at >= date(?, '-120 days')
+        WHERE disclosed_at >= ?
         """,
-        (target_date.isoformat(),),
+        (cutoff_date,),
     )
     fresh_count = cur.fetchone()[0]
 

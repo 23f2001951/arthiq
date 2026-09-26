@@ -98,7 +98,7 @@ def evaluate_symbol_filters(
     if row and row[0]:
         earliest_date_str = row[0]
         try:
-            earliest_dt = date.fromisoformat(earliest_date_str)
+            earliest_dt = earliest_date_str if isinstance(earliest_date_str, date) else date.fromisoformat(str(earliest_date_str))
             tenure_years = (pit.asof - earliest_dt).days / 365.25
             details["tenure_years"] = round(tenure_years, 2)
             if tenure_years < min_listing_years:

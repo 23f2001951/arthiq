@@ -604,3 +604,459 @@ export interface UpdateProfileRequest {
   name?: string | null;
 }
 
+// -----------------------------------------------------------------------------
+// Mutual Funds & SIP Types
+// -----------------------------------------------------------------------------
+export interface MFSchemeSearchItem {
+  scheme_code: number;
+  isin?: string;
+  scheme_name: string;
+  fund_house: string;
+  category: string;
+  plan_type: string;
+  option_type: string;
+  expense_ratio?: number;
+  aum_cr?: number;
+  crisil_rating?: number;
+  risk_level?: string;
+}
+
+export interface MFHoldingItem {
+  company_name: string;
+  symbol?: string;
+  sector?: string;
+  weight_pct: number;
+}
+
+export interface MFAnalystConviction {
+  conviction_score: number;
+  verdict: string;
+  conviction_badge: string;
+  portfolio_role: string;
+  pillars: Record<string, { score: number; max: number }>;
+  analyst_memo: {
+    bull_case: string;
+    bear_risks: string;
+    recommendation_summary: string;
+  };
+}
+
+export interface MFSchemeDetailResponse {
+  scheme_code: number;
+  isin?: string;
+  scheme_name: string;
+  fund_house: string;
+  category: string;
+  plan_type: string;
+  option_type: string;
+  benchmark_index?: string;
+  expense_ratio?: number;
+  aum_cr?: number;
+  fund_manager?: string;
+  crisil_rating?: number;
+  risk_level?: string;
+  inception_date?: string;
+  current_nav?: number;
+  latest_nav_date?: string;
+  trailing_returns: {
+    '1m'?: number | null;
+    '3m'?: number | null;
+    '6m'?: number | null;
+    '1y'?: number | null;
+    '3y'?: number | null;
+    '5y'?: number | null;
+    'inception'?: number | null;
+  };
+  top_holdings: MFHoldingItem[];
+  analyst_conviction?: MFAnalystConviction;
+}
+
+export interface MFRollingReturnsResponse {
+  window_years: number;
+  sample_count: number;
+  mean_return_pct: number;
+  median_return_pct: number;
+  p25_return_pct: number;
+  p75_return_pct: number;
+  min_return_pct: number;
+  max_return_pct: number;
+  negative_return_prob_pct: number;
+  outperformance_pct?: number | null;
+  series: Array<{
+    start_date: string;
+    end_date: string;
+    fund_return: number;
+    benchmark_return?: number | null;
+  }>;
+}
+
+export interface MFRiskMetricsResponse {
+  cagr: number;
+  volatility: number;
+  downside_deviation: number;
+  sharpe_ratio: number;
+  sortino_ratio: number;
+  beta: number;
+  alpha: number;
+  upside_capture?: number | null;
+  downside_capture?: number | null;
+}
+
+export interface MFRecommendationRequest {
+  risk_profile: string;
+  horizon_years: number;
+  goal_type: string;
+  monthly_budget: number;
+  step_up_pct: number;
+}
+
+export interface MFRecommendationResponse {
+  user_profile: {
+    risk_profile: string;
+    horizon_years: number;
+    goal_type: string;
+    monthly_budget: number;
+    step_up_pct: number;
+    risk_label: string;
+    expected_cagr_pct: number;
+  };
+  asset_allocation: Record<string, number>;
+  recommended_funds: Array<{
+    scheme_code: number;
+    scheme_name: string;
+    fund_house: string;
+    category: string;
+    allocation_pct: number;
+    monthly_sip: number;
+    expense_ratio?: number;
+    aum_cr?: number;
+    crisil_rating?: number;
+    risk_level?: string;
+    fund_manager?: string;
+    rationale: string;
+  }>;
+  total_monthly_sip: number;
+  wealth_projection: {
+    monthly_sip: number;
+    expected_cagr_pct: number;
+    years: number;
+    step_up_pct: number;
+    total_invested: number;
+    estimated_corpus: number;
+    estimated_gain: number;
+    wealth_multiplier: number;
+    trajectory: Array<{
+      year: number;
+      monthly_sip: number;
+      total_invested: number;
+      estimated_corpus: number;
+      wealth_gain: number;
+      real_purchasing_power: number;
+    }>;
+  };
+  advisory_rationale?: string;
+  market_context?: string;
+  tax_optimization_memo?: {
+    regime: string;
+    equity_ltcg_rate: string;
+    equity_stcg_rate: string;
+    tax_harvesting_strategy: string;
+    debt_taxation: string;
+    elss_lockin: string;
+  };
+  rebalancing_protocol?: {
+    tolerance_band_pct: number;
+    review_cadence: string;
+    execution_strategy: string;
+    glide_path: string;
+  };
+  multi_scenario_projections?: {
+    expected_cagr: number;
+    bull_cagr: number;
+    bear_cagr: number;
+    terminal_base: number;
+    terminal_bull: number;
+    terminal_bear: number;
+    total_invested: number;
+    unified_trajectory: Array<{
+      year: number;
+      monthly_sip: number;
+      total_invested: number;
+      corpus_base: number;
+      corpus_bull: number;
+      corpus_bear: number;
+      real_purchasing_power: number;
+    }>;
+  };
+}
+
+export interface MFSIPCalculateRequest {
+  monthly_sip: number;
+  expected_cagr_pct: number;
+  years: number;
+  step_up_pct: number;
+  inflation_pct: number;
+}
+
+export interface MFSIPCalculateResponse {
+  monthly_sip: number;
+  expected_cagr_pct: number;
+  years: number;
+  step_up_pct: number;
+  inflation_pct: number;
+  total_invested: number;
+  estimated_corpus: number;
+  estimated_gain: number;
+  wealth_multiplier: number;
+  trajectory: Array<{
+    year: number;
+    monthly_sip: number;
+    total_invested: number;
+    estimated_corpus: number;
+    wealth_gain: number;
+    real_purchasing_power: number;
+  }>;
+}
+
+export interface MFSwitchOption {
+  target_scheme_code: number;
+  target_scheme_name: string;
+  fund_house: string;
+  category: string;
+  crisil_rating: number;
+  expense_ratio: number;
+  trailing_3y_cagr: number;
+  downside_capture?: number | null;
+  overlap_with_current_pct: number;
+  comparison_advantage: string;
+  execution_modes: {
+    full_switch: string;
+    pause_and_redirect: string;
+    partial_switch: string;
+  };
+}
+
+export interface MFActiveSIPDiagnostic {
+  sip_id: string;
+  scheme_code: number;
+  scheme_name: string;
+  category: string;
+  monthly_amount: number;
+  sip_day: number;
+  start_date: string;
+  end_date?: string;
+  status: string;
+  step_up_pct: number;
+  installments_count: number;
+  total_invested: number;
+  current_value: number;
+  profit: number;
+  xirr_pct?: number | null;
+  expected_installments?: number;
+  actual_installments?: number;
+  skipped_installments_count?: number;
+  regularity_pct?: number;
+  fund_cagr_3y?: number | null;
+  benchmark_cagr_3y?: number;
+  benchmark_name?: string;
+  rolling_alpha_pct?: number | null;
+  downside_capture?: number | null;
+  expense_ratio?: number | null;
+  health_status?: string;
+  action_type?: string;
+  action_headline?: string;
+  recommendation?: string;
+  cashflow_diagnostic_memo?: string;
+  trailing_3y_cagr?: number | null;
+  switch_options?: MFSwitchOption[];
+  next_sip_date?: string;
+  days_until_next_sip?: number;
+  current_month_checkin_status?: 'PAID' | 'SKIPPED' | 'PENDING' | 'UPCOMING';
+  due_date_current_month?: string;
+}
+
+export interface MFSIPCheckinItem {
+  checkin_id: string;
+  sip_id: string;
+  scheme_code: number;
+  scheme_name: string;
+  category: string;
+  monthly_amount: number;
+  sip_day: number;
+  due_date: string;
+  month_label: string;
+  status: 'PENDING' | 'PAID' | 'SKIPPED';
+  is_overdue: boolean;
+  days_ago: number;
+  question: string;
+}
+
+export interface MFSIPCheckinHistoryItem {
+  checkin_id: string;
+  sip_id: string;
+  scheme_code: number;
+  scheme_name: string;
+  category: string;
+  due_date: string;
+  status: 'PAID' | 'SKIPPED';
+  confirmed_date?: string | null;
+  amount: number;
+}
+
+export interface MFPortfolioResponse {
+  portfolio_id: string;
+  portfolio_name?: string;
+  notes?: string | null;
+  last_saved_at?: string | null;
+  total_invested: number;
+  current_value: number;
+  unrealized_profit: number;
+  absolute_return_pct: number;
+  portfolio_xirr_pct?: number | null;
+  monthly_sip_run_rate: number;
+  active_sips_count: number;
+  closed_sips_count: number;
+  active_sips: MFActiveSIPDiagnostic[];
+  pending_checkins?: MFSIPCheckinItem[];
+  checkin_history?: MFSIPCheckinHistoryItem[];
+  closed_sips: Array<{
+    sip_id: string;
+    scheme_code: number;
+    scheme_name: string;
+    category: string;
+    monthly_amount: number;
+    sip_day: number;
+    start_date: string;
+    end_date?: string;
+    status: string;
+    step_up_pct: number;
+    installments_count: number;
+    total_invested: number;
+    current_value: number;
+    profit: number;
+    xirr_pct?: number | null;
+    post_mortem?: {
+      stopped_date?: string;
+      months_inactive: number;
+      retained_units: number;
+      retained_valuation: number;
+      verdict: string;
+    };
+    action_options?: {
+      resume?: {
+        action: string;
+        title: string;
+        description: string;
+        suggested_amount: number;
+        suggested_sip_day: number;
+        rationale: string;
+      };
+      reallocate?: {
+        action: string;
+        title: string;
+        description: string;
+        rationale: string;
+        options: Array<{
+          target_scheme_code: number;
+          target_scheme_name: string;
+          fund_house: string;
+          category: string;
+          crisil_rating: number;
+          expense_ratio: number;
+          trailing_3y_cagr: number;
+          downside_capture: number;
+          overlap_with_current_pct: number;
+          comparison_advantage: string;
+          execution_modes: {
+            full_switch: string;
+            pause_and_redirect: string;
+            partial_switch: string;
+          };
+        }>;
+      };
+      let_compound?: {
+        action: string;
+        title: string;
+        description: string;
+        rationale: string;
+        expected_cagr_pct: number;
+        projections: {
+          years_1: number;
+          years_3: number;
+          years_5: number;
+          years_10: number;
+        };
+      };
+    };
+  }>;
+  scheme_holdings: Array<{
+    scheme_code: number;
+    scheme_name: string;
+    category: string;
+    total_units: number;
+    invested_amount: number;
+    current_value: number;
+    current_nav: number;
+    unrealized_profit: number;
+    abs_return_pct: number;
+    xirr_pct?: number | null;
+  }>;
+  asset_allocation: Record<string, number>;
+  overlap_analysis: {
+    schemes?: string[];
+    pairwise_overlap_matrix?: Record<string, Record<string, number>>;
+    average_overlap_pct?: number;
+    high_overlap_warning?: boolean;
+    common_holdings?: Array<{
+      stock: string;
+      funds_holding_count: number;
+      fund_weights: Record<string, number>;
+      avg_weight_pct: number;
+    }>;
+  };
+}
+
+export interface MFPortfolioHealthResponse {
+  portfolio_id: string;
+  health_score: number;
+  verdict: string;
+  rating_label: string;
+  current_valuation?: number;
+  portfolio_xirr?: number | null;
+  pillars: {
+    alpha_performance: number;
+    downside_protection?: number;
+    overlap_efficiency: number;
+    diversification: number;
+    sip_discipline: number;
+  };
+  cash_flow_discipline_analysis?: {
+    total_active_sips: number;
+    total_skipped_installments: number;
+    average_regularity_pct: number;
+    verdict: string;
+    insight: string;
+  };
+  actionable_switches?: Array<{
+    scheme_name: string;
+    scheme_code: number;
+    category: string;
+    current_value: number;
+    monthly_amount: number;
+    action_type: string;
+    action_headline: string;
+    recommendation: string;
+    cashflow_diagnostic_memo: string;
+    switch_options: MFSwitchOption[];
+  }>;
+  holding_diagnostics?: MFActiveSIPDiagnostic[];
+  predictive_scenarios: Array<{
+    horizon_years: number;
+    base_case_13pct: number;
+    bull_case_16pct: number;
+    bear_case_8pct: number;
+  }>;
+  actionable_recommendations: string[];
+}
+
+

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -215,9 +216,9 @@ class BacktestRunResponse(BaseModel):
 
 class BacktestHistoryItem(BaseModel):
     run_id: str
-    started_at: str
-    start_date: str
-    end_date: str
+    started_at: str | datetime
+    start_date: str | date
+    end_date: str | date
     cagr: float | None = None
     sharpe: float | None = None
     max_drawdown: float | None = None

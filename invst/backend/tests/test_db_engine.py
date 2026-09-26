@@ -68,7 +68,21 @@ def test_row_mapping_compatibility():
         "role": "admin",
     }
     assert "email" in row
+    assert 11 in row
     assert row.get("name", "Default") == "Default"
+
+    # Sequence unpacking / iteration must yield column VALUES, like sqlite3.Row
+    u_id, u_email, u_role = row
+    assert u_id == 11
+    assert u_email == "itsmandeepbeniwal@gmail.com"
+    assert u_role == "admin"
+    assert list(row) == [11, "itsmandeepbeniwal@gmail.com", "admin"]
+    assert tuple(row) == (11, "itsmandeepbeniwal@gmail.com", "admin")
+
+    # Single-element unpacking like for (u_id,) in u_rows
+    single_row = Row([("id", 23, None, None, None, None, None)], (11,))
+    (single_id,) = single_row
+    assert single_id == 11
 
 
 def test_sqlite_connection_works_transparently():

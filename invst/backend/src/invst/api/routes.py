@@ -119,6 +119,19 @@ def get_db() -> Generator[Any, None, None]:
 
 
 
+def _get_request_user_id(current_user: dict[str, Any] | None, default: int = 11) -> int:
+    """Safely extract integer user_id from current_user payload."""
+    if not current_user or not isinstance(current_user, dict):
+        return default
+    raw = current_user.get("user_id") or current_user.get("id")
+    if raw is None or raw == "" or raw == "id":
+        return default
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
+        return default
+
+
 # -------------------------------------------------------------------------
 # Authentication Routes
 # -------------------------------------------------------------------------
@@ -456,7 +469,7 @@ def get_dashboard(
     # 1. Main Portfolio Status
     main_portfolio_status = None
     try:
-        user_id = current_user.get("user_id") or current_user.get("id") or 11
+        user_id = _get_request_user_id(current_user)
         user_p = get_portfolio(conn, "default", user_id=user_id)
         if user_p and user_p.holdings:
             report = evaluate_portfolio_health(conn, user_p.holdings, fetch_live=True)
@@ -550,7 +563,8 @@ def get_dashboard(
     holdings = []
     sector_alloc: dict[str, float] = {}
 
-    pit = PointInTimeDataAccess(conn, asof=date.fromisoformat(asof_date))
+    asof_dt = asof_date if isinstance(asof_date, date) else date.fromisoformat(str(asof_date))
+    pit = PointInTimeDataAccess(conn, asof=asof_dt)
     sectors_map = pit.get_universe_with_sectors()
 
     for sym, w, action, shares, exec_flag in rows:
@@ -568,7 +582,7 @@ def get_dashboard(
         sector_alloc[sec] = round(sector_alloc.get(sec, 0.0) + float(w), 4)
 
     return DashboardResponse(
-        latest_asof=asof_date,
+        latest_asof=str(asof_date) if asof_date else None,
         target_holdings=len(holdings),
         holdings=holdings,
         sector_allocations=sector_alloc,
@@ -954,10 +968,10 @@ def list_backtest_runs(conn: sqlite3.Connection = Depends(get_db)):
     rows = cur.fetchall()
     return [
         BacktestHistoryItem(
-            run_id=r[0],
-            started_at=r[1] or "",
-            start_date=r[2],
-            end_date=r[3],
+            run_id=str(r[0]),
+            started_at=str(r[1]) if r[1] is not None else "",
+            start_date=str(r[2]) if r[2] is not None else "",
+            end_date=str(r[3]) if r[3] is not None else "",
             cagr=r[4],
             sharpe=r[5],
             max_drawdown=r[6],
@@ -1235,7 +1249,7 @@ def get_user_portfolio_holdings(
     """Retrieve user's saved manual stock holdings."""
     from invst.portfolio.health import load_user_holdings
 
-    user_id = current_user.get("user_id") or current_user.get("id") or 11
+    user_id = _get_request_user_id(current_user)
     holdings = load_user_holdings(conn, user_id=user_id)
     return [
         UserHoldingSchema(symbol=h.symbol, shares=h.shares, buy_price=h.buy_price)
@@ -1252,7 +1266,7 @@ def post_save_portfolio_holdings(
     """Save user's manual portfolio holdings to database."""
     from invst.portfolio.health import UserHolding, save_user_holdings
 
-    user_id = current_user.get("user_id") or current_user.get("id") or 11
+    user_id = _get_request_user_id(current_user)
     user_holdings = [
         UserHolding(
             symbol=h.symbol.strip().upper(),
@@ -1300,7 +1314,7 @@ def get_user_portfolios(
     """List all portfolios and target lists, optionally filtered by portfolio_type."""
     from invst.portfolio.health import list_portfolios
 
-    user_id = current_user.get("user_id") or current_user.get("id") or 11
+    user_id = _get_request_user_id(current_user)
     items = list_portfolios(conn, portfolio_type=portfolio_type, user_id=user_id)
     return [PortfolioSummarySchema(**it) for it in items]
 
@@ -1314,7 +1328,7 @@ def post_create_portfolio(
     """Create a new portfolio or target list."""
     from invst.portfolio.health import UserHolding, create_portfolio
 
-    user_id = current_user.get("user_id") or current_user.get("id") or 11
+    user_id = _get_request_user_id(current_user)
     initial_holdings = [
         UserHolding(
             symbol=h.symbol.strip().upper(),
@@ -1362,7 +1376,7 @@ def get_user_portfolio_detail(
     """Retrieve details and holdings for a specific portfolio."""
     from invst.portfolio.health import get_portfolio
 
-    user_id = current_user.get("user_id") or current_user.get("id") or 11
+    user_id = _get_request_user_id(current_user)
     p = get_portfolio(conn, portfolio_id, user_id=user_id)
     if not p:
         raise HTTPException(status_code=404, detail=f"Portfolio '{portfolio_id}' not found")
@@ -1396,7 +1410,7 @@ def put_update_user_portfolio(
     """Update portfolio metadata and/or replace holdings."""
     from invst.portfolio.health import UserHolding, update_portfolio
 
-    user_id = current_user.get("user_id") or current_user.get("id") or 11
+    user_id = _get_request_user_id(current_user)
     holdings = None
     if payload.holdings is not None:
         holdings = [
@@ -1449,7 +1463,7 @@ def delete_user_portfolio(
     """Delete a portfolio or target list."""
     from invst.portfolio.health import delete_portfolio
 
-    user_id = current_user.get("user_id") or current_user.get("id") or 11
+    user_id = _get_request_user_id(current_user)
     ok = delete_portfolio(conn, portfolio_id, user_id=user_id)
     if not ok:
         raise HTTPException(status_code=404, detail=f"Portfolio '{portfolio_id}' not found")
@@ -1466,7 +1480,7 @@ def post_add_stock_to_portfolio(
     """Add or update an individual stock in a specific portfolio or target list."""
     from invst.portfolio.health import UserHolding, add_or_update_holding_in_portfolio
 
-    user_id = current_user.get("user_id") or current_user.get("id") or 11
+    user_id = _get_request_user_id(current_user)
     holding = UserHolding(
         symbol=payload.symbol.strip().upper(),
         shares=payload.shares,
@@ -1495,7 +1509,7 @@ def delete_stock_from_portfolio(
     """Remove a stock from a specific portfolio or target list."""
     from invst.portfolio.health import remove_holding_from_portfolio
 
-    user_id = current_user.get("user_id") or current_user.get("id") or 11
+    user_id = _get_request_user_id(current_user)
     remove_holding_from_portfolio(conn, portfolio_id, symbol.strip().upper(), user_id=user_id)
     return {"status": "deleted", "portfolio_id": portfolio_id, "symbol": symbol.strip().upper()}
 
@@ -1510,7 +1524,7 @@ def post_evaluate_portfolio_health_by_id(
     """Evaluate health diagnosis for a specific saved portfolio or target list."""
     from invst.portfolio.health import evaluate_portfolio_health, load_user_holdings
 
-    user_id = current_user.get("user_id") or current_user.get("id") or 11
+    user_id = _get_request_user_id(current_user)
     holdings = load_user_holdings(conn, portfolio_id=portfolio_id, user_id=user_id)
     report = evaluate_portfolio_health(conn, holdings, fetch_live=fetch_live)
     return PortfolioHealthResponse(**report.to_dict())

@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from invst.api.routes import router as api_router
+from invst.api.mf_routes import router as mf_router
 from invst.config import get_project_root
 
 
@@ -79,6 +80,7 @@ def create_app() -> FastAPI:
 
     # Register API routes
     app.include_router(api_router)
+    app.include_router(mf_router, prefix="/api")
 
     # Mount pre-built React frontend if dist/ exists
     root = get_project_root()

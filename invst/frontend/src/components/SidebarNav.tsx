@@ -13,6 +13,7 @@ import {
   X,
   Users,
   BrainCircuit,
+  Coins,
 } from 'lucide-react';
 import { NavTab } from './Navbar';
 import { getUserRole, getUserEmail } from '../api/client';
@@ -126,6 +127,20 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
           badgeColor: 'bg-sky-500/10 text-sky-400 border-sky-500/20',
           icon: Search,
         },
+        {
+          id: 'mf_screener',
+          label: 'Fund Screener',
+          badge: 'ANALYST',
+          badgeColor: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+          icon: Search,
+        },
+        {
+          id: 'mf_advisor',
+          label: 'Smart MF Advisor',
+          badge: 'PRO',
+          badgeColor: 'bg-amber-500/10 text-amber-300 border-amber-500/20',
+          icon: Sparkles,
+        },
       ],
     },
     {
@@ -133,10 +148,17 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
       items: [
         {
           id: 'portfolio',
-          label: 'My Portfolio',
-          badge: 'HEALTH',
+          label: 'Stock Portfolio',
+          badge: 'EQUITY',
           badgeColor: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
           icon: Briefcase,
+        },
+        {
+          id: 'mf_portfolio',
+          label: 'Mutual Fund & SIP',
+          badge: 'HEALTH',
+          badgeColor: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+          icon: Coins,
         },
         {
           id: 'targetlist',

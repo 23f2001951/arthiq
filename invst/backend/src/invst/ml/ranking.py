@@ -250,7 +250,7 @@ def evaluate_walk_forward_ranking(
     for idx in range(min_train_quarters, len(rebalance_dates) - 1):
         rebal_date_str = rebalance_dates[idx]
         from datetime import date
-        rebal_dt = date.fromisoformat(rebal_date_str)
+        rebal_dt = rebal_date_str if isinstance(rebal_date_str, date) else date.fromisoformat(str(rebal_date_str))
         pit = PointInTimeDataAccess(conn, asof=rebal_dt)
         universe = pit.get_universe()
         if not universe:
@@ -262,7 +262,7 @@ def evaluate_walk_forward_ranking(
 
         for train_idx in range(idx):
             t_str = rebalance_dates[train_idx]
-            t_dt = date.fromisoformat(t_str)
+            t_dt = t_str if isinstance(t_str, date) else date.fromisoformat(str(t_str))
             pit_train = PointInTimeDataAccess(conn, asof=t_dt)
             univ_train = pit_train.get_universe()
 

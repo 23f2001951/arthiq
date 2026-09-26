@@ -600,5 +600,229 @@ export async function fetchMarketTickerTape(): Promise<import('../types/api').Ti
   return handleResponse<import('../types/api').TickerItem[]>(res, 'Failed to fetch ticker tape');
 }
 
+// -----------------------------------------------------------------------------
+// Mutual Funds & SIP Client Endpoints
+// -----------------------------------------------------------------------------
+export async function searchMutualFunds(
+  query: string = '',
+  category?: string,
+  limit: number = 30
+): Promise<import('../types/api').MFSchemeSearchItem[]> {
+  const params = new URLSearchParams();
+  if (query) params.append('q', query);
+  if (category && category !== 'All') params.append('category', category);
+  params.append('limit', limit.toString());
+
+  const res = await apiFetch(`${BASE_URL}/v2/mf/search?${params.toString()}`, {
+    headers: { ...authHeaders() },
+  });
+  return handleResponse<import('../types/api').MFSchemeSearchItem[]>(res, 'Failed to search mutual funds');
+}
+
+export async function fetchMFSchemeDetails(
+  schemeCode: number
+): Promise<import('../types/api').MFSchemeDetailResponse> {
+  const res = await apiFetch(`${BASE_URL}/v2/mf/${schemeCode}/details`, {
+    headers: { ...authHeaders() },
+  });
+  return handleResponse<import('../types/api').MFSchemeDetailResponse>(res, `Failed to load details for scheme ${schemeCode}`);
+}
+
+export async function fetchMFRollingReturns(
+  schemeCode: number,
+  windowYears: number = 3
+): Promise<import('../types/api').MFRollingReturnsResponse> {
+  const res = await apiFetch(`${BASE_URL}/v2/mf/${schemeCode}/rolling-returns?window_years=${windowYears}`, {
+    headers: { ...authHeaders() },
+  });
+  return handleResponse<import('../types/api').MFRollingReturnsResponse>(res, `Failed to fetch rolling returns for scheme ${schemeCode}`);
+}
+
+export async function fetchMFRiskMetrics(
+  schemeCode: number
+): Promise<import('../types/api').MFRiskMetricsResponse> {
+  const res = await apiFetch(`${BASE_URL}/v2/mf/${schemeCode}/metrics`, {
+    headers: { ...authHeaders() },
+  });
+  return handleResponse<import('../types/api').MFRiskMetricsResponse>(res, `Failed to fetch risk metrics for scheme ${schemeCode}`);
+}
+
+export async function fetchMFNavHistory(
+  schemeCode: number,
+  period: string = '1y'
+): Promise<{ scheme_code: number; period: string; count: number; points: Array<{ date: string; nav: number }> }> {
+  const res = await apiFetch(`${BASE_URL}/v2/mf/${schemeCode}/nav-history?period=${period}`, {
+    headers: { ...authHeaders() },
+  });
+  return handleResponse(res, `Failed to fetch NAV history for scheme ${schemeCode}`);
+}
+
+export async function getMFRecommendations(
+  data: import('../types/api').MFRecommendationRequest
+): Promise<import('../types/api').MFRecommendationResponse> {
+  const res = await apiFetch(`${BASE_URL}/v2/mf/recommend`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(),
+    },
+    body: JSON.stringify(data),
+  });
+  return handleResponse<import('../types/api').MFRecommendationResponse>(res, 'Failed to generate mutual fund recommendations');
+}
+
+export async function calculateMFSIP(
+  data: import('../types/api').MFSIPCalculateRequest
+): Promise<import('../types/api').MFSIPCalculateResponse> {
+  const res = await apiFetch(`${BASE_URL}/v2/mf/sip/calculate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(),
+    },
+    body: JSON.stringify(data),
+  });
+  return handleResponse<import('../types/api').MFSIPCalculateResponse>(res, 'Failed to calculate SIP projection');
+}
+
+export async function fetchMFPortfolio(): Promise<import('../types/api').MFPortfolioResponse> {
+  const res = await apiFetch(`${BASE_URL}/v2/mf/portfolio`, {
+    headers: { ...authHeaders() },
+  });
+  return handleResponse<import('../types/api').MFPortfolioResponse>(res, 'Failed to fetch mutual fund portfolio');
+}
+
+export async function addOrUpdateMFSIP(data: {
+  scheme_code: number;
+  amount: number;
+  start_date: string;
+  end_date?: string | null;
+  status: string;
+  sip_day?: number;
+  step_up_pct?: number;
+  folio_number?: string;
+  custom_invested?: number | null;
+  custom_current_value?: number | null;
+  custom_units?: number | null;
+  skipped_months?: string[];
+  paid_months?: string[];
+}): Promise<{ status: string; sip_id: string; portfolio_id: string }> {
+  const res = await apiFetch(`${BASE_URL}/v2/mf/portfolio/sip`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(),
+    },
+    body: JSON.stringify(data),
+  });
+  return handleResponse(res, 'Failed to save SIP schedule');
+}
+
+export async function resumeMFSIP(sipId: string, data?: {
+  amount?: number;
+  sip_day?: number;
+}): Promise<{ status: string; message: string; sip_id: string; amount?: number; sip_day?: number }> {
+  const res = await apiFetch(`${BASE_URL}/v2/mf/portfolio/sip/${sipId}/resume`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(),
+    },
+    body: JSON.stringify(data || {}),
+  });
+  return handleResponse(res, 'Failed to resume SIP schedule');
+}
+
+export async function reallocateMFSIP(sipId: string, data: {
+  target_scheme_code: number;
+  allocation_mode: 'full_switch' | 'partial_switch' | 'pause_and_redirect';
+  amount?: number;
+}): Promise<{ status: string; message: string; target_scheme_code: number; new_sip_id?: string }> {
+  const res = await apiFetch(`${BASE_URL}/v2/mf/portfolio/sip/${sipId}/reallocate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(),
+    },
+    body: JSON.stringify(data),
+  });
+  return handleResponse(res, 'Failed to reallocate SIP schedule');
+}
+
+export async function resetMFPortfolio(): Promise<{ status: string; message: string; portfolio_id: string }> {
+  const res = await apiFetch(`${BASE_URL}/v2/mf/portfolio/reset`, {
+    method: 'POST',
+    headers: { ...authHeaders() },
+  });
+  return handleResponse(res, 'Failed to reset mutual fund portfolio');
+}
+
+export async function predictMFPortfolioHealth(): Promise<import('../types/api').MFPortfolioHealthResponse> {
+  const res = await apiFetch(`${BASE_URL}/v2/mf/portfolio/predict-health`, {
+    headers: { ...authHeaders() },
+  });
+  return handleResponse<import('../types/api').MFPortfolioHealthResponse>(res, 'Failed to predict portfolio health');
+}
+
+export async function saveMFPortfolio(data: {
+  portfolio_name?: string;
+  notes?: string;
+}): Promise<{ status: string; message: string; portfolio_id: string; last_saved_at: string; portfolio_name: string }> {
+  const res = await apiFetch(`${BASE_URL}/v2/mf/portfolio/save`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(),
+    },
+    body: JSON.stringify(data),
+  });
+  return handleResponse(res, 'Failed to save mutual fund portfolio');
+}
+
+export async function fetchMFCheckins(): Promise<{
+  portfolio_id: string;
+  pending_checkins: import('../types/api').MFSIPCheckinItem[];
+  checkin_history: import('../types/api').MFSIPCheckinHistoryItem[];
+}> {
+  const res = await apiFetch(`${BASE_URL}/v2/mf/portfolio/checkins`, {
+    headers: { ...authHeaders() },
+  });
+  return handleResponse(res, 'Failed to fetch SIP check-ins');
+}
+
+export async function submitMFSIPCheckin(data: {
+  sip_id: string;
+  due_date: string;
+  status: 'PAID' | 'SKIPPED';
+  amount?: number;
+  notes?: string;
+}): Promise<{ status: string; message: string; sip_id: string; due_date: string; checkin_status: string }> {
+  const res = await apiFetch(`${BASE_URL}/v2/mf/portfolio/sip/checkin`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(),
+    },
+    body: JSON.stringify(data),
+  });
+  return handleResponse(res, 'Failed to submit SIP check-in');
+}
+
+export async function submitMFSIPBatchCheckin(data: {
+  action: 'MARK_ALL_PAID' | 'MARK_ALL_SKIPPED';
+  checkin_ids?: string[];
+}): Promise<{ status: string; message: string; processed_count: number }> {
+  const res = await apiFetch(`${BASE_URL}/v2/mf/portfolio/sip/batch-checkin`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(),
+    },
+    body: JSON.stringify(data),
+  });
+  return handleResponse(res, 'Failed to batch process SIP check-ins');
+}
+
+
 
 

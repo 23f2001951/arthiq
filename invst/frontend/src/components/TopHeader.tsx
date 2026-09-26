@@ -13,6 +13,7 @@ import {
   Sliders,
   Users,
   BrainCircuit,
+  Coins,
 } from 'lucide-react';
 import { NavTab } from './Navbar';
 import { getUserRole } from '../api/client';
@@ -41,10 +42,30 @@ const TAB_TITLES: Record<NavTab, { title: string; subtitle: string; icon: React.
     subtitle: 'Live returns, BQS vs investment score, and redlines',
     icon: Search,
   },
+  mf_screener: {
+    title: 'Mutual Fund Quant Screener',
+    subtitle: 'Seasoned analyst rolling returns, expense drag, and downside capture analysis',
+    icon: Search,
+  },
+  mf_advisor: {
+    title: 'Smart MF Advisor & Wealth Architect',
+    subtitle: 'Institutional risk profiling, asset allocation models, and goal SIP projections',
+    icon: Sparkles,
+  },
   portfolio: {
-    title: 'My Portfolio Health',
+    title: 'My Stock Portfolio Health',
     subtitle: 'Sector exposure, risk caps & tactical rebalancing',
     icon: Briefcase,
+  },
+  mf_portfolio: {
+    title: 'Mutual Fund & SIP Portfolio Health',
+    subtitle: 'Track active & stopped SIPs, exact valuations, and predictive health diagnostics',
+    icon: Coins,
+  },
+  mutual_funds: {
+    title: 'Mutual Funds & SIP Engine',
+    subtitle: 'Institutional quant fund screener, seasoned advisor, and predictive health diagnostics',
+    icon: Coins,
   },
   targetlist: {
     title: 'Tactical Target Lists & Wishlists',

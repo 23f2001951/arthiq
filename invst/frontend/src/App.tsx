@@ -40,6 +40,9 @@ const UserManagementView = React.lazy(() =>
 const ModelTrainingView = React.lazy(() =>
   import('./views/ModelTrainingView').then((m) => ({ default: m.ModelTrainingView }))
 );
+const MutualFundsView = React.lazy(() =>
+  import('./views/MutualFundsView').then((m) => ({ default: m.MutualFundsView }))
+);
 
 const ViewLoadingSkeleton: React.FC = () => (
   <div className="space-y-6 animate-pulse py-4">
@@ -91,10 +94,31 @@ export const App: React.FC = () => {
       setIsAuthenticated(authed);
       if (authed) {
         const role = getUserRole();
+        const savedTab = localStorage.getItem('arth_active_tab') as NavTab | null;
         if (role === 'admin') {
-          setCurrentTab('admin_dashboard');
+          const adminTabs: NavTab[] = ['admin_dashboard', 'users', 'model_training', 'backtest', 'health'];
+          if (savedTab && adminTabs.includes(savedTab)) {
+            setCurrentTab(savedTab);
+          } else {
+            setCurrentTab('admin_dashboard');
+          }
         } else {
-          setCurrentTab('dashboard');
+          const investorTabs: NavTab[] = [
+            'dashboard',
+            'recommendations',
+            'analyzer',
+            'portfolio',
+            'targetlist',
+            'mutual_funds',
+            'mf_screener',
+            'mf_advisor',
+            'mf_portfolio',
+          ];
+          if (savedTab && investorTabs.includes(savedTab)) {
+            setCurrentTab(savedTab);
+          } else {
+            setCurrentTab('dashboard');
+          }
         }
       }
     });
@@ -116,11 +140,25 @@ export const App: React.FC = () => {
         const adminTabs: NavTab[] = ['admin_dashboard', 'users', 'model_training', 'backtest', 'health'];
         if (!adminTabs.includes(currentTab)) {
           setCurrentTab('admin_dashboard');
+        } else {
+          try { localStorage.setItem('arth_active_tab', currentTab); } catch {}
         }
       } else {
-        const investorTabs: NavTab[] = ['dashboard', 'recommendations', 'analyzer', 'portfolio', 'targetlist'];
+        const investorTabs: NavTab[] = [
+          'dashboard',
+          'recommendations',
+          'analyzer',
+          'portfolio',
+          'targetlist',
+          'mutual_funds',
+          'mf_screener',
+          'mf_advisor',
+          'mf_portfolio',
+        ];
         if (!investorTabs.includes(currentTab)) {
           setCurrentTab('dashboard');
+        } else {
+          try { localStorage.setItem('arth_active_tab', currentTab); } catch {}
         }
       }
     }
@@ -260,6 +298,10 @@ export const App: React.FC = () => {
                 />
               )}
               {currentTab === 'portfolio' && <PortfolioHealthView />}
+              {currentTab === 'mutual_funds' && <MutualFundsView mode="all" />}
+              {currentTab === 'mf_screener' && <MutualFundsView mode="screener" initialTab="analyzer" />}
+              {currentTab === 'mf_advisor' && <MutualFundsView mode="advisor" initialTab="advisor" />}
+              {currentTab === 'mf_portfolio' && <MutualFundsView mode="portfolio" initialTab="portfolio" />}
               {currentTab === 'targetlist' && (
                 <TargetListView
                   onNavigateTab={(tab, sym) => {

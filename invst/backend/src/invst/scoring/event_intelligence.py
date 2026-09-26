@@ -66,7 +66,7 @@ def compute_event_factor_deltas(
         pillar, base_impact, half_life = spec
 
         # Compute days elapsed since event
-        ev_date = date.fromisoformat(ev.effective_date)
+        ev_date = ev.effective_date if isinstance(ev.effective_date, date) else date.fromisoformat(str(ev.effective_date))
         days_elapsed = max(0, (asof - ev_date).days)
 
         # Direction modifier

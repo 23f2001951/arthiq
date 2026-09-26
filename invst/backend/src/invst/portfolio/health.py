@@ -177,105 +177,16 @@ def get_default_user_id(conn: sqlite3.Connection) -> int:
         return 11
 
 
-def init_portfolio_db(conn: sqlite3.Connection) -> None:
-    """Ensure separate user_portfolios, user_portfolio_holdings, user_target_lists, and user_target_list_items tables exist."""
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS user_portfolios (
-            id TEXT NOT NULL,
-            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-            name TEXT NOT NULL,
-            description TEXT DEFAULT '',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (id, user_id)
-        );
-        """
-    )
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_user_portfolios_user ON user_portfolios(user_id);")
+_PORTFOLIO_DB_INITIALIZED = False
 
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS user_portfolio_holdings (
-            portfolio_id TEXT NOT NULL,
-            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-            symbol TEXT NOT NULL,
-            shares REAL NOT NULL DEFAULT 0.0,
-            buy_price REAL NOT NULL DEFAULT 0.0,
-            target_price REAL,
-            notes TEXT DEFAULT '',
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (portfolio_id, user_id, symbol),
-            FOREIGN KEY (portfolio_id, user_id) REFERENCES user_portfolios(id, user_id) ON DELETE CASCADE
-        );
-        """
-    )
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_user_holdings_user ON user_portfolio_holdings(user_id);")
 
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS user_target_lists (
-            id TEXT NOT NULL,
-            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-            name TEXT NOT NULL,
-            description TEXT DEFAULT '',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (id, user_id)
-        );
-        """
-    )
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_user_target_lists_user ON user_target_lists(user_id);")
+def ensure_user_portfolio_and_target_list(conn: sqlite3.Connection, user_id: int | str) -> None:
+    """Ensure User 1 and User 11 have their seeded holdings and target list, and any user has their default portfolio."""
+    try:
+        user_id = int(user_id)
+    except (ValueError, TypeError):
+        return
 
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS user_target_list_items (
-            list_id TEXT NOT NULL,
-            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-            symbol TEXT NOT NULL,
-            shares REAL NOT NULL DEFAULT 0.0,
-            buy_price REAL NOT NULL DEFAULT 0.0,
-            target_price REAL,
-            notes TEXT DEFAULT '',
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (list_id, user_id, symbol),
-            FOREIGN KEY (list_id, user_id) REFERENCES user_target_lists(id, user_id) ON DELETE CASCADE
-        );
-        """
-    )
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_target_list_items_user ON user_target_list_items(user_id);")
-
-    # Migration from legacy user_portfolios if user_id is missing
-    cur = conn.cursor()
-    cur.execute("PRAGMA table_info(user_portfolios)")
-    cols = [c[1] for c in cur.fetchall()]
-    if "user_id" not in cols:
-        cur.execute("SELECT id, name, description, created_at, updated_at FROM user_portfolios")
-        old_ports = cur.fetchall()
-        cur.execute(
-            """
-            CREATE TABLE user_portfolios_temp (
-                id TEXT NOT NULL,
-                user_id INTEGER NOT NULL,
-                name TEXT NOT NULL,
-                description TEXT DEFAULT '',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (id, user_id)
-            )
-            """
-        )
-        for p in old_ports:
-            cur.execute(
-                "INSERT OR REPLACE INTO user_portfolios_temp (id, user_id, name, description, created_at, updated_at) VALUES (?, 11, ?, ?, ?, ?)",
-                p,
-            )
-        cur.execute("DROP TABLE user_portfolios")
-        cur.execute("ALTER TABLE user_portfolios_temp RENAME TO user_portfolios")
-        conn.commit()
-
-def ensure_user_portfolio_and_target_list(conn: sqlite3.Connection, user_id: int) -> None:
-    """Ensure User 11 has their seeded holdings and target list, and any user has their default portfolio."""
     cur = conn.cursor()
     # Check if users table exists and if user_id exists in users table
     try:
@@ -293,26 +204,35 @@ def ensure_user_portfolio_and_target_list(conn: sqlite3.Connection, user_id: int
                 "INSERT OR IGNORE INTO user_portfolios (id, user_id, name, description) VALUES ('default', ?, 'Main Portfolio', 'Primary core investment portfolio')",
                 (user_id,),
             )
-            if user_id == 11:
-                cur.executemany(
-                    "INSERT OR REPLACE INTO user_portfolio_holdings (portfolio_id, user_id, symbol, shares, buy_price, notes) VALUES ('default', ?, ?, ?, ?, '')",
-                    [
-                        (user_id, "GOLDIETF", 19.0, 110.02),
-                        (user_id, "SILVERIETF", 25.0, 162.55),
-                        (user_id, "NIFTYBEES", 8.0, 261.40),
-                    ],
-                )
 
-        # 2. Tactical Dip Target List - ONLY for User 11
-        if user_id == 11:
+        # Check holdings count for this user in default portfolio
+        cur.execute("SELECT COUNT(*) FROM user_portfolio_holdings WHERE portfolio_id = 'default' AND user_id = ?", (user_id,))
+        h_row = cur.fetchone()
+        h_count = h_row[0] if h_row else 0
+        if h_count == 0 and user_id in (1, 11):
+            cur.executemany(
+                "INSERT OR IGNORE INTO user_portfolio_holdings (portfolio_id, user_id, symbol, shares, buy_price, notes) VALUES ('default', ?, ?, ?, ?, '')",
+                [
+                    (user_id, "GOLDIETF", 19.0, 110.02),
+                    (user_id, "SILVERIETF", 25.0, 162.55),
+                    (user_id, "NIFTYBEES", 8.0, 261.40),
+                ],
+            )
+
+        # 2. Tactical Dip Target List - for User 1 and User 11
+        if user_id in (1, 11):
             cur.execute("SELECT id FROM user_target_lists WHERE id = 'targetlist_dips' AND user_id = ?", (user_id,))
             if not cur.fetchone():
                 cur.execute(
                     "INSERT OR IGNORE INTO user_target_lists (id, user_id, name, description) VALUES ('targetlist_dips', ?, 'Tactical Dip Target List', 'High-conviction ideas waiting for dip accumulation limit')",
                     (user_id,),
                 )
+            cur.execute("SELECT COUNT(*) FROM user_target_list_items WHERE list_id = 'targetlist_dips' AND user_id = ?", (user_id,))
+            i_row = cur.fetchone()
+            i_count = i_row[0] if i_row else 0
+            if i_count == 0:
                 cur.executemany(
-                    "INSERT OR REPLACE INTO user_target_list_items (list_id, user_id, symbol, shares, buy_price, target_price, notes) VALUES ('targetlist_dips', ?, ?, ?, ?, ?, ?)",
+                    "INSERT OR IGNORE INTO user_target_list_items (list_id, user_id, symbol, shares, buy_price, target_price, notes) VALUES ('targetlist_dips', ?, ?, ?, ?, ?, ?)",
                     [
                         (user_id, "KSCL", 10.0, 768.8, 768.8, "🟢 STRONG BUY (68/100). Dip Target: ₹768.8 (--1.7%). High-conviction core compounder: High business quality (BQS: 63.7/100) paired with an attractive valuation margin of safety (Valuation Score: 60.0/100)."),
                         (user_id, "IDBI", 10.0, 77.7, 77.7, "🟢 STRONG BUY (75/100). Dip Target: ₹77.7 (--5.9%). High-conviction core compounder: High business quality (BQS: 63.7/100) paired with an attractive valuation margin of safety (Valuation Score: 80.0/100)."),
@@ -326,6 +246,7 @@ def ensure_user_portfolio_and_target_list(conn: sqlite3.Connection, user_id: int
 
 def init_portfolio_db(conn: sqlite3.Connection) -> None:
     """Ensure separate user_portfolios, user_portfolio_holdings, user_target_lists, and user_target_list_items tables exist."""
+
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS user_portfolios (
@@ -399,12 +320,18 @@ def init_portfolio_db(conn: sqlite3.Connection) -> None:
         cur.execute("SELECT id FROM users")
         u_rows = cur.fetchall()
         if u_rows:
-            for (u_id,) in u_rows:
-                ensure_user_portfolio_and_target_list(conn, u_id)
+            for row in u_rows:
+                u_id = row[0] if (hasattr(row, "__getitem__") and not isinstance(row, (int, str))) else row
+                try:
+                    ensure_user_portfolio_and_target_list(conn, int(u_id))
+                except Exception:
+                    pass
         else:
             ensure_user_portfolio_and_target_list(conn, def_uid)
     except Exception:
         ensure_user_portfolio_and_target_list(conn, def_uid)
+
+    _PORTFOLIO_DB_INITIALIZED = True
 
 
 def list_portfolios(

@@ -498,7 +498,7 @@ TICKER_ITEMS_DEF: list[dict[str, Any]] = [
     {"symbol": "BHARTIARTL.NS", "name": "BHARTIARTL", "category": "EQUITY", "prefix": "₹", "db_symbol": "BHARTIARTL", "default_price": 1650.00, "default_change": 0.75},
     {"symbol": "ITC.NS", "name": "ITC", "category": "EQUITY", "prefix": "₹", "db_symbol": "ITC", "default_price": 485.50, "default_change": 0.40},
     {"symbol": "SBIN.NS", "name": "SBIN", "category": "EQUITY", "prefix": "₹", "db_symbol": "SBIN", "default_price": 785.20, "default_change": 0.65},
-    {"symbol": "TATAMOTORS.NS", "name": "TATAMOTORS", "category": "EQUITY", "prefix": "₹", "db_symbol": "TATAMOTORS", "default_price": 940.00, "default_change": 1.10},
+    {"symbol": "LT.NS", "name": "L&T", "category": "EQUITY", "prefix": "₹", "db_symbol": "LT", "default_price": 3620.00, "default_change": 0.85},
     {"symbol": "GOLDBEES.NS", "name": "GOLD BEES", "category": "ETF", "prefix": "₹", "db_symbol": "GOLDBEES", "default_price": 123.48, "default_change": 0.25},
     {"symbol": "SILVERBEES.NS", "name": "SILVER BEES", "category": "ETF", "prefix": "₹", "db_symbol": "SILVERBEES", "default_price": 162.55, "default_change": 0.45},
     {"symbol": "NIFTYBEES.NS", "name": "NIFTY BEES", "category": "ETF", "prefix": "₹", "db_symbol": "NIFTYBEES", "default_price": 264.13, "default_change": 0.05},
