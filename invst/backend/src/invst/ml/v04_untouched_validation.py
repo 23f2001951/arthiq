@@ -94,6 +94,18 @@ def run_untouched_test_portfolio_backtests(
                 "ml_gamma": gamma,
             },
         },
+        {
+            "model_id": "cand_4_val_qual_rev",
+            "name": "Candidate 4: Value + Quality + Reversal",
+            "short_name": "Val+Qual+Reversal",
+            "is_baseline": False,
+            "config": {
+                "quant_engine": "v3_ml",
+                "investor_profile": "MODERATE",
+                "ml_feature_mode": "cand_quality_value_reversal",
+                "ml_gamma": gamma,
+            },
+        },
     ]
 
     results: list[dict[str, Any]] = []
@@ -157,6 +169,7 @@ def run_untouched_test_predictive_ranking(
         ("Candidate 1: Fundamentals Only", "set_a"),
         ("Candidate 3: Fundamentals + Sentiment", "pair_fund_sent"),
         ("Candidate 2: Fundamentals + Momentum", "pair_fund_mom"),
+        ("Candidate 4: Value + Quality + Reversal", "cand_quality_value_reversal"),
         ("Full 24-Feature ML (Set H)", "set_h"),
     ]
 

@@ -150,6 +150,13 @@ def generate_mf_recommendation(
                 elif "Balanced" in cat:
                     rationale = "Dynamic equity-debt hedging to cushion downside drawdowns during market corrections."
 
+                cat_rank = None
+                try:
+                    from invst.portfolio.mf_portfolio_service import get_scheme_category_rank
+                    cat_rank = get_scheme_category_rank(row[0], row[3], conn=conn)
+                except Exception:
+                    pass
+
                 recommended_funds.append({
                     "scheme_code": row[0],
                     "scheme_name": row[1],
@@ -163,6 +170,7 @@ def generate_mf_recommendation(
                     "risk_level": row[7] or "Very High",
                     "fund_manager": row[8],
                     "rationale": rationale,
+                    "category_rank": cat_rank,
                 })
     finally:
         conn.close()

@@ -13,15 +13,10 @@ export const TrendSparkline: React.FC<TrendSparklineProps> = ({
   color = 'emerald',
   width = 96,
   height = 30,
-  isPositive = true,
 }) => {
-  // Generate a smooth sample trend if no raw array is provided
-  const points =
-    data && data.length > 2
-      ? data
-      : isPositive
-      ? [10, 12, 11, 14, 13, 16, 15, 18, 17, 21, 23]
-      : [22, 20, 21, 18, 19, 15, 16, 13, 14, 11, 10];
+  // A trend line must come from an actual time series; direction alone is not chart data.
+  const points = (data || []).filter((value) => Number.isFinite(value));
+  if (points.length < 2) return null;
 
   const min = Math.min(...points);
   const max = Math.max(...points);

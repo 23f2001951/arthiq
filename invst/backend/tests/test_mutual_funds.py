@@ -239,7 +239,7 @@ def test_mf_api_routes(app_client):
 
 def test_mf_portfolio_reset_and_health_prediction(app_client):
     from invst.api.auth import create_access_token
-    token = create_access_token({"id": 11, "email": "itsmandeepbeniwal@gmail.com", "role": "user"})
+    token = create_access_token({"id": 999911, "email": "test_isolated_suite@example.com", "role": "user"})
     auth_headers = {"Authorization": f"Bearer {token}"}
 
     # 1. Fetch current portfolio
@@ -287,8 +287,11 @@ def test_mf_portfolio_reset_and_health_prediction(app_client):
 
 def test_mf_portfolio_save_and_monthly_sip_checkin(app_client):
     from invst.api.auth import create_access_token
-    token = create_access_token({"id": 11, "email": "itsmandeepbeniwal@gmail.com", "role": "user"})
+    token = create_access_token({"id": 999912, "email": "test_isolated_suite_2@example.com", "role": "user"})
     auth_headers = {"Authorization": f"Bearer {token}"}
+
+    # 0. Clean slate for test user
+    app_client.post("/api/v2/mf/portfolio/reset", headers=auth_headers)
 
     # 1. Save portfolio metadata (name and notes)
     res_save = app_client.post(
@@ -481,6 +484,302 @@ def test_nav_history_time_series_api(app_client):
     res_max = app_client.get("/api/v2/mf/122639/nav-history?period=max")
     assert res_max.status_code == 200
     assert res_max.json()["count"] > 0
+
+
+def test_same_amc_switch_options_prioritization(app_client):
+    """Verify get_switch_options_for_scheme prioritizes Same-AMC (instant, 0-fee) options first."""
+    from invst.portfolio.mf_portfolio_service import get_switch_options_for_scheme
+    from invst.db.engine import get_db_connection
+
+    conn = get_db_connection()
+    try:
+        # Scheme 120841 is Quant Mid Cap (Quant Mutual Fund)
+        options = get_switch_options_for_scheme(
+            scheme_code=120841,
+            category="Equity: Mid Cap",
+            conn=conn,
+            current_val=50000.0,
+            monthly_amt=5000.0,
+        )
+        assert len(options) > 0
+        first_opt = options[0]
+        assert first_opt["is_same_amc"] is True
+        assert first_opt["switch_type"] == "intra_amc"
+        assert "Same AMC" in first_opt["switch_badge"]
+        assert "T+1" in first_opt["turnaround_time"]
+        assert "Free direct internal folio transfer" in first_opt["amc_advantage"]
+        assert "Free Intra-AMC Switch" in first_opt["execution_modes"]["full_switch"]
+    finally:
+        conn.close()
+
+
+def test_edit_and_delete_sip_service():
+    """Verify editing a SIP schedule updates in-place without touching other holdings, and deletion is cleanly isolated."""
+    from invst.portfolio.mf_portfolio_service import (
+        add_or_update_sip,
+        delete_sip_from_portfolio,
+        analyze_mf_portfolio,
+        get_or_create_user_mf_portfolio,
+    )
+    from invst.db.engine import get_db_connection
+
+    test_uid = 888899
+    pid = get_or_create_user_mf_portfolio(test_uid)
+
+    # 1. Add two distinct SIPs
+    sip_a = add_or_update_sip(
+        portfolio_id=pid,
+        scheme_code=120594,
+        amount=1000.0,
+        start_date="2024-01-05",
+        status="ACTIVE",
+        sip_day=5,
+    )
+    sip_b = add_or_update_sip(
+        portfolio_id=pid,
+        scheme_code=118776,
+        amount=2000.0,
+        start_date="2024-02-10",
+        status="ACTIVE",
+        sip_day=10,
+    )
+
+    # 2. Edit SIP A in place: change amount, status, add skipped month
+    updated_sip_a = add_or_update_sip(
+        portfolio_id=pid,
+        scheme_code=120594,
+        amount=3500.0,
+        start_date="2024-01-05",
+        status="ACTIVE",
+        sip_day=5,
+        skipped_months=["2024-03"],
+        custom_invested=14000.0,
+        custom_current_value=17500.0,
+        sip_id=sip_a,
+    )
+    assert updated_sip_a == sip_a
+
+    # Verify diagnostic reflection
+    diag = analyze_mf_portfolio(pid)
+    found_a = [s for s in diag["active_sips"] if s["sip_id"] == sip_a]
+    found_b = [s for s in diag["active_sips"] if s["sip_id"] == sip_b]
+    assert len(found_a) == 1
+    assert len(found_b) == 1
+    assert found_a[0]["monthly_amount"] == 3500.0
+    assert found_a[0]["total_invested"] == 14000.0
+    assert "2024-03" in found_a[0]["skipped_months"]
+    assert found_b[0]["monthly_amount"] == 2000.0
+
+    # 3. Delete SIP A
+    del_ok = delete_sip_from_portfolio(pid, sip_a)
+    assert del_ok is True
+
+    # 4. Verify SIP A is gone while SIP B is completely preserved
+    diag_after = analyze_mf_portfolio(pid)
+    assert not any(s["sip_id"] == sip_a for s in diag_after["active_sips"])
+    assert any(s["sip_id"] == sip_b for s in diag_after["active_sips"])
+
+    # Cleanup test portfolio
+    delete_sip_from_portfolio(pid, sip_b)
+
+
+def test_api_edit_and_delete_sip_routes(app_client):
+    """Test PUT and DELETE /api/v2/mf/portfolio/sip/{sip_id} endpoints."""
+    from invst.api.auth import create_access_token
+
+    token = create_access_token({"id": 777788, "email": "tester_edit_delete@test.com", "role": "user"})
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 1. Create a SIP
+    create_res = app_client.post(
+        "/api/v2/mf/portfolio/sip",
+        headers=headers,
+        json={
+            "scheme_code": 120594,
+            "amount": 1500,
+            "start_date": "2024-01-05",
+            "status": "ACTIVE",
+            "sip_day": 5,
+        },
+    )
+    assert create_res.status_code == 200
+    sip_id = create_res.json()["sip_id"]
+
+    # 2. Edit the SIP via PUT
+    edit_res = app_client.put(
+        f"/api/v2/mf/portfolio/sip/{sip_id}",
+        headers=headers,
+        json={
+            "scheme_code": 120594,
+            "amount": 2500,
+            "start_date": "2024-01-05",
+            "status": "ACTIVE",
+            "sip_day": 5,
+            "custom_invested": 12500,
+            "custom_current_value": 15000,
+        },
+    )
+    assert edit_res.status_code == 200
+    assert edit_res.json()["sip_id"] == sip_id
+
+    # Verify updated in portfolio
+    port_res = app_client.get("/api/v2/mf/portfolio", headers=headers)
+    assert port_res.status_code == 200
+    active = port_res.json()["active_sips"]
+    target = [s for s in active if s["sip_id"] == sip_id][0]
+    assert target["monthly_amount"] == 2500
+    assert target["total_invested"] == 12500
+
+    # 3. Delete the SIP via DELETE
+    del_res = app_client.delete(f"/api/v2/mf/portfolio/sip/{sip_id}", headers=headers)
+    assert del_res.status_code == 200
+    assert del_res.json()["status"] == "success"
+
+    # 4. Deleting again returns 404
+    del_again = app_client.delete(f"/api/v2/mf/portfolio/sip/{sip_id}", headers=headers)
+    assert del_again.status_code == 404
+
+
+def test_powerup_form_tier_ratings():
+    """Verify PowerUp 4-tier form categorization (In-Form, On-Track, Off-Track, Out-of-Form)."""
+    from invst.portfolio.mf_portfolio_service import calculate_powerup_form
+
+    # 1. In-Form: High alpha, strong downside defense
+    in_form = calculate_powerup_form(fund_cagr_3y=24.5, rolling_alpha=4.5, downside_capture=88.0)
+    assert in_form["form_status"] == "IN_FORM"
+    assert in_form["badge_label"] == "In-Form"
+    assert "🟢" in in_form["badge_emoji"]
+    assert in_form["power_score"] >= 85.0
+    assert in_form["action_type"] == "KEEP_INVESTING"
+
+    # 2. On-Track: Modest alpha, acceptable downside capture
+    on_track = calculate_powerup_form(fund_cagr_3y=15.0, rolling_alpha=0.5, downside_capture=98.0)
+    assert on_track["form_status"] == "ON_TRACK"
+    assert on_track["badge_label"] == "On-Track"
+    assert "🔵" in on_track["badge_emoji"]
+    assert 65.0 <= on_track["power_score"] <= 84.0
+    assert on_track["action_type"] == "MAINTAIN_HOLD"
+
+    # 3. Off-Track: Trailing benchmark, pause SIP
+    off_track = calculate_powerup_form(fund_cagr_3y=12.0, rolling_alpha=-2.5, downside_capture=108.0)
+    assert off_track["form_status"] == "OFF_TRACK"
+    assert off_track["badge_label"] == "Off-Track"
+    assert "🟡" in off_track["badge_emoji"]
+    assert 40.0 <= off_track["power_score"] <= 64.0
+    assert off_track["action_type"] == "PAUSE_AND_REDIRECT"
+
+    # 4. Out-of-Form: Severe chronic underperformance, exit & switch
+    out_of_form = calculate_powerup_form(fund_cagr_3y=8.0, rolling_alpha=-6.5, downside_capture=120.0)
+    assert out_of_form["form_status"] == "OUT_OF_FORM"
+    assert out_of_form["badge_label"] == "Out-of-Form"
+    assert "🔴" in out_of_form["badge_emoji"]
+    assert out_of_form["power_score"] <= 39.0
+    assert out_of_form["action_type"] == "EXIT_AND_SWITCH"
+
+
+def test_power_age_fire_calculator():
+    """Verify Power Age (FIRE) simulation, step-up acceleration, and trajectory points."""
+    from invst.portfolio.mf_portfolio_service import calculate_power_age
+
+    res = calculate_power_age(
+        current_age=28,
+        current_corpus=100000.0,
+        monthly_sip=15000.0,
+        annual_step_up_pct=10.0,
+        expected_cagr_pct=13.0,
+        target_monthly_expense_today=50000.0,
+        inflation_pct=6.0,
+        swr_pct=5.0,
+        max_age=75,
+    )
+
+    assert "power_age" in res
+    assert res["current_age"] == 28
+    assert res["power_age"] > 28
+    assert res["power_age"] < 75
+    # Accelerated power age with 10% step-up must be earlier than flat SIP
+    assert res["power_age"] <= res["standard_power_age"]
+    assert res["years_saved_by_step_up"] >= 0
+    assert res["corpus_at_power_age"] > 0
+    assert res["monthly_passive_income_swp"] > 0
+    assert len(res["trajectory"]) > 0
+
+    first_pt = res["trajectory"][0]
+    assert first_pt["age"] == 28
+    assert "target_fire_corpus" in first_pt
+
+
+def test_power_age_api_route(app_client):
+    """Test POST /api/v2/mf/power-age/calculate endpoint."""
+    res = app_client.post(
+        "/api/v2/mf/power-age/calculate",
+        json={
+            "current_age": 30,
+            "current_corpus": 200000.0,
+            "monthly_sip": 20000.0,
+            "annual_step_up_pct": 10.0,
+            "expected_cagr_pct": 13.5,
+            "target_monthly_expense_today": 60000.0,
+            "inflation_pct": 6.0,
+            "swr_pct": 5.0,
+            "max_age": 70,
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["current_age"] == 30
+    assert data["power_age"] > 30
+    assert data["years_to_freedom"] > 0
+    assert len(data["trajectory"]) > 0
+
+
+def test_portfolio_powerup_summary_and_rebalancing(app_client):
+    """Verify GET /api/v2/mf/portfolio contains PowerUp Form Index and Actionable Rebalancing Plan."""
+    from invst.api.auth import create_access_token
+
+    token = create_access_token({"id": 666677, "email": "test_powerup_user@test.com", "role": "user"})
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Reset test user
+    app_client.post("/api/v2/mf/portfolio/reset", headers=headers)
+
+    # Add active SIP in curated top fund (Parag Parikh Flexi Cap)
+    app_client.post(
+        "/api/v2/mf/portfolio/sip",
+        headers=headers,
+        json={
+            "scheme_code": 122639,
+            "amount": 5000.0,
+            "start_date": "2024-01-05",
+            "status": "ACTIVE",
+            "custom_invested": 50000.0,
+            "custom_current_value": 65000.0,
+        },
+    )
+
+    port_res = app_client.get("/api/v2/mf/portfolio", headers=headers)
+    assert port_res.status_code == 200
+    pdata = port_res.json()
+
+    assert "powerup_summary" in pdata
+    summary = pdata["powerup_summary"]
+    assert "portfolio_power_score" in summary
+    assert summary["portfolio_power_score"] > 0
+    assert "capital_distribution" in summary
+    assert "in_form_pct" in summary["capital_distribution"]
+    assert "rebalancing_plan" in summary
+    assert "power_age_projection" in pdata
+    assert "power_age" in pdata["power_age_projection"]
+
+    # Active SIP should have powerup_form badge attached
+    active_sip = pdata["active_sips"][0]
+    assert "powerup_form" in active_sip
+    assert "form_status" in active_sip["powerup_form"]
+    assert "badge_label" in active_sip["powerup_form"]
+
+
+
+
 
 
 

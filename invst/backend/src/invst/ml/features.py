@@ -54,6 +54,35 @@ def compute_downside_semivariance(pit: PointInTimeDataAccess, symbol: str, lookb
     return round(semi_var, 4)
 
 
+def compute_price_reversal_1m(pit: PointInTimeDataAccess, symbol: str) -> float:
+    """Compute short-term 1-month reversal factor: -1.0 * 21-day return (positive when stock pulled back)."""
+    asof = pit.asof
+    start_dt = date.fromordinal(max(1, asof.toordinal() - 40))
+    prices = pit.get_price_series(symbol, start=start_dt, end=asof)
+    if len(prices) < 15:
+        return 0.0
+    p_curr = prices[-1].close
+    p_prior = prices[0].close
+    if p_prior > 0:
+        ret_1m = (p_curr - p_prior) / p_prior
+        return -float(ret_1m)
+    return 0.0
+
+
+def compute_smooth_momentum_12_1(pit: PointInTimeDataAccess, symbol: str) -> float:
+    """Compute 12-month momentum excluding the most recent 1-month reversal window."""
+    asof = pit.asof
+    start_dt = date.fromordinal(max(1, asof.toordinal() - 380))
+    prices = pit.get_price_series(symbol, start=start_dt, end=asof)
+    if len(prices) < 40:
+        return 0.0
+    p_curr_lagged = prices[-22].close if len(prices) >= 22 else prices[-1].close
+    p_year_ago = prices[0].close
+    if p_year_ago > 0:
+        return float((p_curr_lagged - p_year_ago) / p_year_ago)
+    return 0.0
+
+
 def extract_symbol_ml_features(
     pit: PointInTimeDataAccess,
     symbol: str,
@@ -93,6 +122,13 @@ def extract_symbol_ml_features(
     pb = float(v.get("pb") or 3.0)
     ev_ebitda = float(v.get("ev_ebitda") or 14.0)
 
+    # 7. Enhanced Linear & Reversal Alpha Signals
+    ey = float(1.0 / max(2.0, pe))
+    bp = float(1.0 / max(0.5, pb))
+    roe_pb = float(roe / max(0.5, pb))
+    rev_1m = compute_price_reversal_1m(pit, symbol)
+    smooth_mom = compute_smooth_momentum_12_1(pit, symbol)
+
     return {
         "composite_score": float(composite_score),
         "investment_score": float(investment_score),
@@ -104,12 +140,17 @@ def extract_symbol_ml_features(
         "pe_ttm": pe,
         "pb": pb,
         "ev_ebitda": ev_ebitda,
+        "earnings_yield": ey,
+        "book_to_price": bp,
+        "roe_to_pb": roe_pb,
         "annualised_vol": float(r.get("annualised_vol_252d") or 0.25),
         "beta": float(r.get("beta_nifty500_2yr") or 1.0),
         "max_drawdown": float(r.get("max_drawdown_3yr") or -0.20),
         "downside_semivariance": downside_semi,
         "momentum_6_12_1": float(mom),
         "dist_from_52w_high": float(dist_52w),
+        "reversal_1m": float(rev_1m),
+        "smooth_momentum_12_1": float(smooth_mom),
         "news_sentiment": float(sent),
         "macro_vix": float(vix),
         "macro_vix_change_30d": float(vix_change),

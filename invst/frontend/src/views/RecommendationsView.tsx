@@ -15,10 +15,10 @@ import { FactorMatrixView } from '../components/FactorMatrixView';
 import { StockIdeasSubTab } from '../components/StockIdeasSubNav';
 import { LensView } from '../components/LensView';
 import { RadarView } from '../components/RadarView';
+import { useDailyMarketRefresh } from '../hooks/useDailyMarketRefresh';
 import {
   Filter,
   Calendar,
-  Sparkles,
   RefreshCw,
   Zap,
   BarChart3,
@@ -31,15 +31,18 @@ import {
 interface RecommendationsViewProps {
   activeSubTab?: StockIdeasSubTab;
   onSelectSubTab?: (subTab: StockIdeasSubTab) => void;
+  onAnalyzeSymbol?: (symbol: string) => void;
 }
 
 export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
   activeSubTab = 'alpha_picks',
+  onAnalyzeSymbol,
 }) => {
-  const [viewMode, setViewMode] = useState<'quick_pick' | 'matrix' | 'cards'>('quick_pick');
+  const [viewMode, setViewMode] = useState<'quick_pick' | 'matrix' | 'cards'>('matrix');
 
   // Standard recommendations state
   const [recs, setRecs] = useState<StockRecommendationItem[]>([]);
+  const [recommendationsAsof, setRecommendationsAsof] = useState<string>('');
   const [topN, setTopN] = useState<number>(8);
   const [selectedSector, setSelectedSector] = useState<string>('ALL');
 
@@ -59,7 +62,7 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
   const getTodayIST = () =>
     new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
 
-  const [asof, setAsof] = useState<string>(getTodayIST());
+  const [asof, setAsof] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -74,6 +77,7 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
       }
       const res = await fetchRecommendations(asof, Math.max(topN, 20));
       setRecs(res.recommendations);
+      setRecommendationsAsof(res.asof_date);
 
       try {
         const statusRes = await fetchModelStatus();
@@ -87,6 +91,8 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
       setLoading(false);
     }
   };
+
+  useDailyMarketRefresh(loadData);
 
   useEffect(() => {
     loadData();
@@ -106,32 +112,32 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
   }
 
   if (activeSubTab === 'radar') {
-    return <RadarView />;
+    return <RadarView recommendations={recs} asof={recommendationsAsof || asof} />;
   }
 
   return (
     <div className="space-y-8">
-      {/* Top Header & View Mode Switcher (Mixed Winsor Blue + Emerald + Obsidian theme) */}
+      {/* Reference-led investment ideas workspace */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="flex items-center space-x-3">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-winsor-700 via-winsor-600 to-sky-400 p-0.5 shadow-[0_0_20px_rgba(37,99,235,0.35)] flex items-center justify-center">
-              <div className="w-full h-full bg-[#080a12] rounded-[14px] flex items-center justify-center">
-                <Sparkles className="w-5 h-5 text-sky-400" />
+            <div className="ideas-title-mark w-11 h-11 rounded-2xl flex items-center justify-center">
+              <div className="w-full h-full rounded-[14px] flex items-center justify-center">
+                <BarChart3 className="w-5 h-5" />
               </div>
             </div>
             <div>
               <div className="flex items-center space-x-2">
                 <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
-                  Stock Ideas & Alpha Picks
+                  Investment Ideas
                 </h1>
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-winsor-950 text-winsor-400 border border-winsor-800/60 flex items-center">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse mr-1.5" />
-                  MULTI-FACTOR
+                  {recommendationsAsof ? `AS OF ${recommendationsAsof}` : 'MULTI-FACTOR'}
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-1 font-sans">
-                Stage 0 Liquidity Filter → Quality (40%) → Valuation (30%) → Risk (30%) + Sentiment Overlay
+                Ranked research ideas with transparent quality, valuation, risk, and current price context.
               </p>
             </div>
           </div>
@@ -143,34 +149,34 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
             onClick={() => setViewMode('quick_pick')}
             className={`flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
               viewMode === 'quick_pick'
-                ? 'bg-gradient-to-r from-winsor-700 to-winsor-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)] border border-sky-400/30'
+                ? 'ideas-view-mode--active text-white border'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
             <Zap className="w-3.5 h-3.5" />
-            <span>Top {pickN} Alpha Picks</span>
+            <span>Top Picks</span>
           </button>
           <button
             onClick={() => setViewMode('matrix')}
             className={`flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
               viewMode === 'matrix'
-                ? 'bg-gradient-to-r from-sky-600 to-cyan-500 text-white shadow-[0_0_15px_rgba(6,182,212,0.4)] border border-cyan-300/30'
+                ? 'ideas-view-mode--active text-white border'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
             <BarChart3 className="w-3.5 h-3.5" />
-            <span>Factor Matrix</span>
+            <span>All Ideas</span>
           </button>
           <button
             onClick={() => setViewMode('cards')}
             className={`flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
               viewMode === 'cards'
-                ? 'bg-gradient-to-r from-indigo-700 to-indigo-600 text-white shadow-[0_0_15px_rgba(99,102,241,0.4)] border border-indigo-400/30'
+                ? 'ideas-view-mode--active text-white border'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
             <Layers className="w-3.5 h-3.5" />
-            <span>Detailed Cards</span>
+            <span>Research Cards</span>
           </button>
         </div>
       </div>
@@ -192,7 +198,7 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-base font-black text-white font-mono tracking-tight">
-                  {modelStatus?.model_name || 'Calibrated Fund+Momentum Booster (Candidate 2)'}
+                  {modelStatus?.model_name || 'Factor scoring baseline'}
                 </h2>
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -208,14 +214,14 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
                   <ShieldCheck className="w-3.5 h-3.5 mr-1 text-emerald-400" />
                   Brier Score:{' '}
                   <strong className="text-white ml-1">
-                    {modelStatus?.brier_score !== undefined ? modelStatus.brier_score.toFixed(3) : '0.250'}
+                    {modelStatus?.brier_score !== undefined ? modelStatus.brier_score.toFixed(3) : '—'}
                   </strong>
                 </span>
                 <span className="flex items-center text-slate-400">
                   <BarChart3 className="w-3.5 h-3.5 mr-1 text-sky-400" />
                   Training Size:{' '}
                   <strong className="text-white ml-1">
-                    {modelStatus?.sample_count ? `${modelStatus.sample_count} PIT Quarters` : '615 PIT Samples'}
+                    {modelStatus?.sample_count ? `${modelStatus.sample_count} PIT Samples` : '—'}
                   </strong>
                 </span>
                 <span className="flex items-center text-slate-400">
@@ -261,13 +267,13 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
       {/* Control Bar: As-of Date, Flexible Count Selector & Filters */}
       <div className="glass-card p-4 rounded-3xl flex flex-wrap items-center justify-between gap-4 border border-white/[0.08]">
         <div className="flex flex-wrap items-center gap-3 text-xs">
-          {/* As-of Date Picker with Today & Baseline PIT shortcuts */}
+          {/* As-of Date Picker defaults to the latest stored market session. */}
           <div className="flex items-center space-x-2 bg-[#06080e] px-2.5 py-1.5 rounded-xl border border-white/[0.08]">
             <Calendar className="w-4 h-4 text-sky-400" />
             <span className="text-slate-400">As-Of:</span>
             <input
               type="date"
-              value={asof}
+              value={asof || recommendationsAsof}
               onChange={(e) => setAsof(e.target.value)}
               className="bg-transparent text-white font-mono font-bold focus:outline-none cursor-pointer"
             />
@@ -280,9 +286,9 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
                     ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm'
                     : 'bg-[#080b13] text-slate-400 hover:text-white border border-white/[0.04]'
                 }`}
-                title="Set As-Of Date to Today (Live Current Date)"
+                title="Use today's point-in-time cutoff; data remains limited to stored observations"
               >
-                Today (Live)
+                Today
               </button>
               <button
                 type="button"
@@ -560,7 +566,8 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 mt-1">
               {picks.map((pick) => {
                 const targetRupees = freshCapital * pick.suggested_weight;
-                const sharePrice = pick.latest_close || 1500;
+                const sharePrice = pick.latest_close;
+                if (!sharePrice || sharePrice <= 0) return null;
                 const sharesToBuy = Math.floor(targetRupees / sharePrice);
                 const actualRupees = sharesToBuy * sharePrice;
                 const remainder = targetRupees - actualRupees;
@@ -635,7 +642,7 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
 
       {/* Mode 2: Cross-Sectional Factor Comparison Matrix */}
       {!loading && !error && viewMode === 'matrix' && (
-        <FactorMatrixView stocks={filteredRecs} />
+        <FactorMatrixView stocks={filteredRecs} onAnalyze={onAnalyzeSymbol} />
       )}
 
       {/* Mode 3: Detailed Stock Cards */}

@@ -20,8 +20,7 @@ interface KPICardProps {
   deltaPositive?: boolean;
   icon?: LucideIcon;
   variant?: KPIVariant;
-  sparkline?: boolean;
-  trendPositive?: boolean;
+  trendData?: number[];
 }
 
 export const KPICard: React.FC<KPICardProps> = ({
@@ -32,8 +31,7 @@ export const KPICard: React.FC<KPICardProps> = ({
   deltaPositive = true,
   icon: Icon,
   variant = 'winsor',
-  sparkline = false,
-  trendPositive = true,
+  trendData,
 }) => {
   const accentGradients: Record<string, { line: string; glow: string }> = {
     winsor: { line: 'from-transparent via-sky-400 to-transparent', glow: 'bg-sky-500/5' },
@@ -47,9 +45,10 @@ export const KPICard: React.FC<KPICardProps> = ({
   };
 
   const style = accentGradients[variant] || accentGradients.winsor;
+  const trendPositive = trendData ? trendData[trendData.length - 1] >= trendData[0] : true;
 
   return (
-    <div className="glass-panel p-5 relative overflow-hidden group hover:-translate-y-1.5 hover:scale-[1.015] hover:border-white/[0.16] hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.9),0_0_20px_rgba(56,189,248,0.12)] transition-all duration-300 select-none">
+    <div className="dashboard-kpi-card glass-panel p-5 relative overflow-hidden group hover:-translate-y-1 hover:border-white/[0.16] transition-all duration-300 select-none">
       {/* Subtle top glow highlight line */}
       <div className={`absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r ${style.line}`} />
       <div className={`absolute top-0 right-0 w-36 h-36 ${style.glow} blur-3xl pointer-events-none group-hover:scale-125 transition-transform duration-500`} />
@@ -78,9 +77,9 @@ export const KPICard: React.FC<KPICardProps> = ({
       </div>
 
       {/* Bottom Subtitle, Delta, and Sparkline */}
-      <div className="mt-4 flex items-center justify-between pt-3 border-t border-white/[0.06] relative z-10">
+      <div className="dashboard-kpi-card__footer mt-4 flex items-start justify-between gap-2 pt-3 border-t border-white/[0.06] relative z-10">
         {subtitle && (
-          <span className="text-[11px] text-slate-400 truncate max-w-[140px] font-medium">
+          <span className="dashboard-kpi-card__subtitle text-[11px] text-slate-400 font-medium">
             {subtitle}
           </span>
         )}
@@ -102,11 +101,11 @@ export const KPICard: React.FC<KPICardProps> = ({
           </div>
         )}
 
-        {sparkline && (
+        {trendData && trendData.length > 1 && (
           <div className="ml-auto pl-2">
             <TrendSparkline
+              data={trendData}
               color={deltaPositive && trendPositive ? 'emerald' : 'cyan'}
-              isPositive={deltaPositive && trendPositive}
               width={75}
               height={22}
             />

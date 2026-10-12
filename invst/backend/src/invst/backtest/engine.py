@@ -169,7 +169,7 @@ def run_walk_forward_backtest(
                     past_univ = past_pit.get_universe()
                     if not past_univ:
                         continue
-                    past_sample = past_univ[:15]
+                    past_sample = past_univ
                     X_past, p_syms, _ = build_ml_feature_dataset(
                         past_pit,
                         past_sample,

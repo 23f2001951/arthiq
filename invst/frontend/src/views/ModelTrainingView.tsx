@@ -126,7 +126,7 @@ export const ModelTrainingView: React.FC = () => {
             Training Observations
           </div>
           <div className="text-xl font-black text-white font-mono">
-            {status?.sample_count ? status.sample_count.toLocaleString() : '1,200+'}
+            {status?.sample_count ? status.sample_count.toLocaleString() : '—'}
           </div>
           <div className="text-[11px] text-slate-400 mt-1 font-mono">
             PIT Historical Snapshots
@@ -138,7 +138,7 @@ export const ModelTrainingView: React.FC = () => {
             Calibration Brier Score
           </div>
           <div className="text-xl font-black text-emerald-400 font-mono">
-            {status?.brier_score !== undefined ? status.brier_score.toFixed(3) : '0.198'}
+            {status?.brier_score !== undefined ? status.brier_score.toFixed(3) : '—'}
           </div>
           <div className="text-[11px] text-slate-400 mt-1 font-mono">
             Target: &lt; 0.220 (Well-Calibrated)

@@ -1,239 +1,92 @@
-import React, { useState } from 'react';
-import {
-  Zap,
-  CheckCircle2,
-  ArrowUpRight,
-} from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { CalendarClock, RefreshCw, Radio, TriangleAlert } from 'lucide-react';
+import { fetchCorporateEvents } from '../api/client';
+import { CorporateEventItem } from '../types/api';
 
-interface MarketSignal {
-  id: string;
-  symbol: string;
-  companyName: string;
-  category: 'earnings' | 'breakout' | 'factor' | 'risk';
-  headline: string;
-  timestamp: string;
-  scoreImpact: string;
-  sentimentTone: 'bullish' | 'neutral' | 'cautious';
-  pitVerified: boolean;
+interface EdgeViewProps {
+  asof: string;
 }
 
-const SIGNALS: MarketSignal[] = [
-  {
-    id: 'sig-1',
-    symbol: 'TCS',
-    companyName: 'Tata Consultancy Services Ltd',
-    category: 'earnings',
-    headline: 'Q3 Financial Disclosure Verified: PAT climbs +8.2% YoY, EBIT margin holds firm at 25.1%.',
-    timestamp: '14 mins ago',
-    scoreImpact: '+4.5 Factor Pts',
-    sentimentTone: 'bullish',
-    pitVerified: true,
-  },
-  {
-    id: 'sig-2',
-    symbol: 'INFY',
-    companyName: 'Infosys Ltd',
-    category: 'breakout',
-    headline: 'Volume Momentum Surge: 30-day median trading velocity exceeded by 2.4x with price up +1.9%.',
-    timestamp: '32 mins ago',
-    scoreImpact: '+3.2 Factor Pts',
-    sentimentTone: 'bullish',
-    pitVerified: true,
-  },
-  {
-    id: 'sig-3',
-    symbol: 'ICICIBANK',
-    companyName: 'ICICI Bank Ltd',
-    category: 'factor',
-    headline: 'Rank Upgrade: Advances into top decile (Decile 1) across Quality & Risk dimensions.',
-    timestamp: '1 hr ago',
-    scoreImpact: 'Rank #2 Overall',
-    sentimentTone: 'bullish',
-    pitVerified: true,
-  },
-  {
-    id: 'sig-4',
-    symbol: 'RELIANCE',
-    companyName: 'Reliance Industries Ltd',
-    category: 'earnings',
-    headline: 'Energy & Retail Capex Filing: New green hydrogen facility capitalised without leverage increase.',
-    timestamp: '2 hrs ago',
-    scoreImpact: '+2.8 Factor Pts',
-    sentimentTone: 'bullish',
-    pitVerified: true,
-  },
-  {
-    id: 'sig-5',
-    symbol: 'BHARTIARTL',
-    companyName: 'Bharti Airtel Ltd',
-    category: 'breakout',
-    headline: 'ARPU Expansion Alert: Blended ARPU expands past ₹210 on 5G plan migrations.',
-    timestamp: '3 hrs ago',
-    scoreImpact: '+3.0 Factor Pts',
-    sentimentTone: 'bullish',
-    pitVerified: true,
-  },
-  {
-    id: 'sig-6',
-    symbol: 'LT',
-    companyName: 'Larsen & Toubro Ltd',
-    category: 'factor',
-    headline: 'Mega Order Win Disclosed: ₹4,200 Cr hydrocarbon contract secured in Middle East.',
-    timestamp: '4 hrs ago',
-    scoreImpact: '+2.5 Factor Pts',
-    sentimentTone: 'bullish',
-    pitVerified: true,
-  },
-  {
-    id: 'sig-7',
-    symbol: 'HDFCBANK',
-    companyName: 'HDFC Bank Ltd',
-    category: 'risk',
-    headline: 'Credit-Deposit Ratio Consolidation: Margin expansion on track following merger integration.',
-    timestamp: '5 hrs ago',
-    scoreImpact: 'Neutral Drift',
-    sentimentTone: 'neutral',
-    pitVerified: true,
-  },
-];
+export const EdgeView: React.FC<EdgeViewProps> = ({ asof }) => {
+  const [events, setEvents] = useState<CorporateEventItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-export const EdgeView: React.FC = () => {
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const loadEvents = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetchCorporateEvents(asof);
+      setEvents(response.events || []);
+    } catch (err: any) {
+      setError(err.message || 'Unable to load corporate events.');
+      setEvents([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const filteredSignals =
-    selectedCategory === 'all'
-      ? SIGNALS
-      : SIGNALS.filter((s) => s.category === selectedCategory);
+  useEffect(() => { void loadEvents(); }, [asof]);
 
   return (
-    <div className="space-y-8 animate-fadeIn">
-      {/* Header Banner */}
-      <div className="p-6 sm:p-8 rounded-3xl bg-[#080b13] border border-purple-500/20 shadow-2xl relative overflow-hidden mesh-glow-purple">
-        <div className="absolute inset-0 bg-dot-grid opacity-20 pointer-events-none" />
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center space-x-2">
-              <span className="p-1.5 rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/30">
-                <Zap className="w-4 h-4" />
-              </span>
-              <span className="text-xs font-mono font-bold text-purple-400 uppercase tracking-widest">
-                Real-Time Event Radar &amp; Point-in-Time Disclosures
-              </span>
-            </div>
-            <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight mt-1">
-              Edge: Quantitative Event Stream
-            </h2>
-            <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-              Streaming disclosures, volume breakouts, and model rank migrations audited against zero-lookahead timestamps.
-            </p>
-          </div>
-
-          <div className="flex items-center space-x-3 bg-black/40 p-3 rounded-2xl border border-white/[0.08] shrink-0 font-mono">
-            <div className="text-right">
-              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Feed Status</span>
-              <span className="text-sm font-bold text-emerald-400 flex items-center justify-end">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse mr-1.5" />
-                Live PIT Stream
-              </span>
-            </div>
-          </div>
+    <section className="space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.18em] text-winsor-300 font-semibold">Point-in-time event feed</p>
+          <h2 className="mt-1 text-xl font-semibold text-white">Corporate events</h2>
+          <p className="mt-1 text-xs text-slate-400">Events visible at the selected cutoff date · {asof}</p>
         </div>
-      </div>
-
-      {/* Signal Filter Bar */}
-      <div className="flex items-center space-x-2 overflow-x-auto no-scrollbar py-1 font-mono text-xs">
-        <button
-          onClick={() => setSelectedCategory('all')}
-          className={`px-4 py-1.5 rounded-full font-bold transition-all cursor-pointer ${
-            selectedCategory === 'all'
-              ? 'bg-purple-600 text-white shadow-[0_0_15px_rgba(147,51,234,0.4)] border border-purple-400'
-              : 'bg-[#0a0d18] text-slate-400 hover:text-white border border-white/[0.06]'
-          }`}
-        >
-          All Signals ({SIGNALS.length})
-        </button>
-        <button
-          onClick={() => setSelectedCategory('earnings')}
-          className={`px-4 py-1.5 rounded-full font-bold transition-all cursor-pointer ${
-            selectedCategory === 'earnings'
-              ? 'bg-purple-600 text-white shadow-[0_0_15px_rgba(147,51,234,0.4)] border border-purple-400'
-              : 'bg-[#0a0d18] text-slate-400 hover:text-white border border-white/[0.06]'
-          }`}
-        >
-          Earnings &amp; Results
-        </button>
-        <button
-          onClick={() => setSelectedCategory('breakout')}
-          className={`px-4 py-1.5 rounded-full font-bold transition-all cursor-pointer ${
-            selectedCategory === 'breakout'
-              ? 'bg-purple-600 text-white shadow-[0_0_15px_rgba(147,51,234,0.4)] border border-purple-400'
-              : 'bg-[#0a0d18] text-slate-400 hover:text-white border border-white/[0.06]'
-          }`}
-        >
-          Volume &amp; Breakouts
-        </button>
-        <button
-          onClick={() => setSelectedCategory('factor')}
-          className={`px-4 py-1.5 rounded-full font-bold transition-all cursor-pointer ${
-            selectedCategory === 'factor'
-              ? 'bg-purple-600 text-white shadow-[0_0_15px_rgba(147,51,234,0.4)] border border-purple-400'
-              : 'bg-[#0a0d18] text-slate-400 hover:text-white border border-white/[0.06]'
-          }`}
-        >
-          Factor Upgrades
-        </button>
-        <button
-          onClick={() => setSelectedCategory('risk')}
-          className={`px-4 py-1.5 rounded-full font-bold transition-all cursor-pointer ${
-            selectedCategory === 'risk'
-              ? 'bg-purple-600 text-white shadow-[0_0_15px_rgba(147,51,234,0.4)] border border-purple-400'
-              : 'bg-[#0a0d18] text-slate-400 hover:text-white border border-white/[0.06]'
-          }`}
-        >
-          Risk Diagnostics
+        <button onClick={() => void loadEvents()} disabled={loading} className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-white/10 text-xs text-slate-300 hover:text-white disabled:opacity-50">
+          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
         </button>
       </div>
 
-      {/* Signals Stream List */}
-      <div className="space-y-4">
-        {filteredSignals.map((signal) => (
-          <div
-            key={signal.id}
-            className="glass-card p-5 sm:p-6 relative overflow-hidden hover:border-purple-500/40 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 group"
-          >
-            <div className="space-y-2 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-mono font-black text-white text-base">{signal.symbol}</span>
-                <span className="text-xs text-slate-400 hidden md:inline">({signal.companyName})</span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/[0.04] text-slate-400 border border-white/[0.08] uppercase">
-                  {signal.category}
-                </span>
-                <span className="text-[10px] font-mono text-emerald-400 flex items-center bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                  <CheckCircle2 className="w-2.5 h-2.5 mr-1" />
-                  PIT Timestamped
-                </span>
-                <span className="text-[10px] font-mono text-slate-500 ml-auto sm:ml-0">
-                  {signal.timestamp}
-                </span>
-              </div>
+      {error && <div className="p-4 rounded-2xl border border-rose-500/20 bg-rose-950/20 text-sm text-rose-200">{error}</div>}
 
-              <p className="text-xs sm:text-sm text-slate-200 font-sans leading-relaxed">
-                {signal.headline}
-              </p>
-            </div>
-
-            <div className="flex items-center space-x-3 shrink-0 sm:border-l sm:border-white/[0.06] sm:pl-6">
-              <div className="text-right font-mono">
-                <span className="text-[10px] text-slate-500 uppercase block font-semibold">Model Impact</span>
-                <span className="text-xs sm:text-sm font-bold text-amber-400">{signal.scoreImpact}</span>
-              </div>
-              <div className="w-8 h-8 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400 group-hover:scale-110 transition-transform">
-                <ArrowUpRight className="w-4 h-4" />
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
+      {loading ? (
+        <div className="glass-card min-h-48 rounded-2xl flex items-center justify-center gap-3 text-sm text-slate-400">
+          <RefreshCw className="w-4 h-4 animate-spin" /> Loading point-in-time events…
+        </div>
+      ) : !error && events.length === 0 ? (
+        <div className="glass-card min-h-48 rounded-2xl p-8 flex flex-col items-center justify-center text-center">
+          <CalendarClock className="w-6 h-6 text-slate-500 mb-3" />
+          <h3 className="text-sm font-semibold text-white">No events for this cutoff</h3>
+          <p className="mt-1 max-w-md text-xs leading-relaxed text-slate-400">The event feed has no stored corporate disclosures for the selected date window. No sample events are substituted.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {events.map((event) => {
+            const direction = event.direction.toLowerCase();
+            const tone = direction.includes('positive') || direction.includes('bull') ? 'text-emerald-300 border-emerald-500/20 bg-emerald-950/20'
+              : direction.includes('negative') || direction.includes('bear') ? 'text-rose-300 border-rose-500/20 bg-rose-950/20'
+              : 'text-slate-300 border-white/10 bg-white/[0.03]';
+            return (
+              <article key={event.event_id} className="glass-card rounded-2xl p-4 sm:p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-sm font-bold text-white">{event.symbol}</span>
+                      <span className="px-2 py-0.5 rounded-full border border-white/10 text-[9px] uppercase tracking-wider text-slate-400">{event.event_type.replace(/_/g, ' ')}</span>
+                      <span className={`px-2 py-0.5 rounded-full border text-[9px] uppercase tracking-wider ${tone}`}>{event.direction}</span>
+                    </div>
+                    <p className="mt-2 text-sm leading-relaxed text-slate-200">{event.headline}</p>
+                  </div>
+                  <div className="shrink-0 text-right text-[10px] font-mono text-slate-400">
+                    <div>{event.effective_date}</div>
+                    <div className="mt-1">Materiality {event.materiality_score.toFixed(1)}</div>
+                    <div>Confidence {event.confidence_score.toFixed(1)}</div>
+                  </div>
+                </div>
+                {event.affected_factors.length > 0 && <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                  <TriangleAlert className="w-3 h-3 text-winsor-300" />
+                  {event.affected_factors.map((factor) => <span key={factor} className="px-2 py-0.5 rounded-md bg-white/[0.04] text-[10px] text-slate-400">{factor.replace(/_/g, ' ')}</span>)}
+                </div>}
+              </article>
+            );
+          })}
+        </div>
+      )}
+      <p className="flex items-center gap-1.5 text-[10px] text-slate-500"><Radio className="w-3 h-3" /> Events are point-in-time records; this view does not claim a real-time news stream.</p>
+    </section>
   );
 };

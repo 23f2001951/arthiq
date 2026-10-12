@@ -22,11 +22,12 @@ export const QuickPickCard: React.FC<QuickPickCardProps> = ({ pick }) => {
   const formatPct = (val?: number | null) => (val !== undefined && val !== null ? `${val.toFixed(2)}%` : '—');
   const formatNum = (val?: number | null) => (val !== undefined && val !== null ? val.toFixed(2) : '—');
 
-  const probPct = Math.round((pick.p_outperform ?? 0.5) * 100);
-  const expAlpha = pick.expected_alpha_pct ?? 0.0;
+  const alphaModelAvailable = pick.alpha_model_available === true;
+  const probPct = alphaModelAvailable && pick.p_outperform != null ? Math.round(pick.p_outperform * 100) : null;
+  const expAlpha = alphaModelAvailable ? pick.expected_alpha_pct : null;
   const arthScore = pick.arth_score ?? Math.round(pick.composite_score * 100);
-  const agreement = Math.round((pick.signal_agreement ?? 1.0) * 100);
-  const convictionTier = pick.conviction_tier ?? 'HIGH CONVICTION ALPHA';
+  const agreement = alphaModelAvailable && pick.signal_agreement != null ? Math.round(pick.signal_agreement * 100) : null;
+  const convictionTier = pick.conviction_tier;
 
   return (
     <div className="glass-card rounded-3xl p-6 relative overflow-hidden border border-white/[0.08] hover:border-winsor-500/40 transition-all duration-300 shadow-2xl group">
@@ -48,14 +49,14 @@ export const QuickPickCard: React.FC<QuickPickCardProps> = ({ pick }) => {
                 {pick.symbol}
               </h3>
               <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold border flex items-center gap-1 ${
-                probPct >= 70
+                probPct !== null && probPct >= 70
                   ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40'
-                  : probPct >= 55
+                  : probPct !== null && probPct >= 55
                   ? 'bg-sky-950/80 text-sky-300 border-sky-500/40'
                   : 'bg-amber-950/80 text-amber-300 border-amber-500/40'
               }`}>
                 <Sparkles className="w-3 h-3 text-sky-400" />
-                {convictionTier}
+                {alphaModelAvailable ? convictionTier || 'Ranked research idea' : 'Factor score rank'}
               </span>
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-[#0e1322] text-sky-300 border border-sky-500/30">
                 ArthScore: {arthScore.toFixed(1)}
@@ -102,21 +103,21 @@ export const QuickPickCard: React.FC<QuickPickCardProps> = ({ pick }) => {
             <div>
               <div className="flex items-center space-x-1.5">
                 <span className="text-xs font-bold text-white font-mono">
-                  Calibrated P(Alpha &gt; 0):
+                  {alphaModelAvailable ? 'Calibrated P(Alpha > 0):' : 'Alpha probability:'}
                 </span>
                 <span className={`text-sm font-black font-mono ${
-                  probPct >= 70 ? 'text-emerald-400' : 'text-sky-300'
+                  probPct != null && probPct >= 70 ? 'text-emerald-400' : 'text-sky-300'
                 }`}>
-                  {probPct}%
+                  {probPct != null ? `${probPct}%` : '—'}
                 </span>
                 <span className="text-[10px] text-slate-400 font-mono">
-                  (Brier Calibrated)
+                  {alphaModelAvailable ? '(Brier calibrated)' : '(Unavailable)'}
                 </span>
               </div>
               <div className="w-44 h-1.5 bg-[#080a12] rounded-full overflow-hidden mt-1 border border-white/[0.08]">
                 <div
                   className="h-full bg-gradient-to-r from-sky-500 to-emerald-400 transition-all duration-500"
-                  style={{ width: `${Math.min(100, Math.max(0, probPct))}%` }}
+                  style={{ width: `${Math.min(100, Math.max(0, probPct ?? 0))}%` }}
                 />
               </div>
             </div>
@@ -126,12 +127,12 @@ export const QuickPickCard: React.FC<QuickPickCardProps> = ({ pick }) => {
             <div className="px-2.5 py-1 rounded-xl bg-[#080c18] border border-white/[0.06] flex items-center space-x-1.5">
               <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
               <span className="text-slate-400">Exp Alpha:</span>
-              <span className="font-bold text-emerald-300">{expAlpha >= 0 ? `+${expAlpha.toFixed(1)}%` : `${expAlpha.toFixed(1)}%`}</span>
+              <span className="font-bold text-emerald-300">{expAlpha != null ? `${expAlpha >= 0 ? '+' : ''}${expAlpha.toFixed(1)}%` : '—'}</span>
             </div>
             <div className="px-2.5 py-1 rounded-xl bg-[#080c18] border border-white/[0.06] flex items-center space-x-1.5">
               <CheckCircle2 className="w-3.5 h-3.5 text-sky-400" />
               <span className="text-slate-400">Signal Agreement:</span>
-              <span className="font-bold text-white">{agreement}%</span>
+              <span className="font-bold text-white">{agreement != null ? `${agreement}%` : '—'}</span>
             </div>
           </div>
         </div>

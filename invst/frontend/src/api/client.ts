@@ -81,6 +81,19 @@ function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+/** Build an absolute API URL for streaming and feature endpoints outside this client. */
+export function apiUrl(path: string): string {
+  return `${API_HOST}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
+/** Fetch an API path using the configured host and current session token. */
+export async function authenticatedApiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  return apiFetch(apiUrl(path), {
+    ...init,
+    headers: { ...authHeaders(), ...(init.headers as Record<string, string> | undefined) },
+  });
+}
+
 /**
  * Wrapper around standard fetch to provide informative messages when network/connection errors occur.
  */
@@ -372,6 +385,16 @@ export async function fetchRecommendations(asof?: string, topN: number = 8): Pro
   return handleResponse<RecommendationsResponse>(res, 'Recommendations request failed');
 }
 
+export async function fetchCorporateEvents(asof?: string): Promise<import('../types/api').EventsFeedResponse> {
+  const params = new URLSearchParams();
+  if (asof) params.append('asof', asof);
+  const suffix = params.toString();
+  const res = await apiFetch(`${BASE_URL}/v2/events/feed${suffix ? `?${suffix}` : ''}`, {
+    headers: { ...authHeaders() },
+  });
+  return handleResponse<import('../types/api').EventsFeedResponse>(res, 'Failed to fetch corporate events');
+}
+
 export async function fetchQuickPicks(
   n: number = 2,
   asof?: string,
@@ -457,6 +480,20 @@ export async function analyzeStock(symbol: string, fetchLive: boolean = true): P
     headers: { ...authHeaders() },
   });
   return handleResponse<import('../types/api').FullStockAnalysisResponse>(res, `Stock analysis failed for ${symbol}`);
+}
+
+export async function fetchStockPriceHistory(symbol: string, period: '1D' | '30D' | '6M' | '1Y' = '1Y'): Promise<{
+  symbol: string;
+  asof_date: string | null;
+  points: { date: string; close: number }[];
+  period: string;
+  interval: string;
+}> {
+  const clean = encodeURIComponent(symbol.trim().toUpperCase());
+  const res = await apiFetch(`${BASE_URL}/v2/analyze/${clean}/price-history?period=${period}`, {
+    headers: { ...authHeaders() },
+  });
+  return handleResponse(res, 'Stock price history query failed');
 }
 
 export async function fetchPortfolioHoldings(): Promise<import('../types/api').UserHoldingItem[]> {
@@ -718,6 +755,45 @@ export async function addOrUpdateMFSIP(data: {
   return handleResponse(res, 'Failed to save SIP schedule');
 }
 
+export async function editMFSIP(
+  sipId: string,
+  data: {
+    scheme_code: number;
+    amount: number;
+    start_date: string;
+    end_date?: string | null;
+    status: string;
+    sip_day?: number;
+    step_up_pct?: number;
+    folio_number?: string;
+    custom_invested?: number | null;
+    custom_current_value?: number | null;
+    custom_units?: number | null;
+    skipped_months?: string[];
+    paid_months?: string[];
+  }
+): Promise<{ status: string; sip_id: string; portfolio_id: string; message: string }> {
+  const res = await apiFetch(`${BASE_URL}/v2/mf/portfolio/sip/${sipId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(),
+    },
+    body: JSON.stringify(data),
+  });
+  return handleResponse(res, 'Failed to update SIP entry');
+}
+
+export async function deleteMFSIP(
+  sipId: string
+): Promise<{ status: string; message: string; sip_id: string; portfolio_id: string }> {
+  const res = await apiFetch(`${BASE_URL}/v2/mf/portfolio/sip/${sipId}`, {
+    method: 'DELETE',
+    headers: { ...authHeaders() },
+  });
+  return handleResponse(res, 'Failed to delete SIP entry');
+}
+
 export async function resumeMFSIP(sipId: string, data?: {
   amount?: number;
   sip_day?: number;
@@ -821,6 +897,20 @@ export async function submitMFSIPBatchCheckin(data: {
     body: JSON.stringify(data),
   });
   return handleResponse(res, 'Failed to batch process SIP check-ins');
+}
+
+export async function calculatePowerAge(
+  data: import('../types/api').MFPowerAgeRequest
+): Promise<import('../types/api').MFPowerAgeResponse> {
+  const res = await apiFetch(`${BASE_URL}/v2/mf/power-age/calculate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(),
+    },
+    body: JSON.stringify(data),
+  });
+  return handleResponse<import('../types/api').MFPowerAgeResponse>(res, 'Failed to calculate Power Age trajectory');
 }
 
 

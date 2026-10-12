@@ -22,6 +22,20 @@ def force_auth_env():
 
 @pytest.fixture
 def client():
+    from invst.db.engine import get_db_connection
+    from invst.api.auth import init_users_table, hash_password, get_admin_email
+    conn = get_db_connection()
+    try:
+        init_users_table(conn)
+        admin_email = get_admin_email()
+        p_hash = hash_password("arth")
+        conn.execute(
+            "UPDATE users SET password_hash = ?, status = 'ACTIVE' WHERE LOWER(email) = LOWER(?)",
+            (p_hash, admin_email),
+        )
+        conn.commit()
+    finally:
+        conn.close()
     return TestClient(app)
 
 

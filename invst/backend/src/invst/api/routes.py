@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 import sqlite3
 from collections.abc import Generator
-from datetime import date
+from datetime import date, datetime
+from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 
@@ -48,6 +49,9 @@ from invst.api.schemas import (
     ChangePasswordResponse,
     CorporateEventItem,
     DashboardResponse,
+    MarketSnapshotItem,
+    MarketMoverItem,
+    SectorMoveItem,
     EmailLookupRequest,
     EmailLookupResponse,
     EventsFeedResponse,
@@ -116,6 +120,25 @@ def get_db() -> Generator[Any, None, None]:
         yield conn
     finally:
         conn.close()
+
+
+def _resolve_market_asof(conn: sqlite3.Connection, requested: str | None = None) -> date | None:
+    """Use the latest stored market session unless the caller chose an explicit PIT date."""
+    if requested:
+        return date.fromisoformat(requested)
+
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT MAX(trade_date) FROM daily_prices")
+        row = cur.fetchone()
+        latest = row[0] if row else None
+        if latest is not None:
+            if isinstance(latest, date):
+                return latest
+            return date.fromisoformat(str(latest)[:10])
+    except Exception as exc:
+        logger.debug("Could not resolve latest stored market session: %s", exc)
+    return None
 
 
 
@@ -465,6 +488,103 @@ def get_dashboard(
     """Retrieve portfolio dashboard KPIs, active target holdings, and sector weights."""
     from invst.portfolio.health import get_portfolio, evaluate_portfolio_health
     from invst.ingestion.live_market_feed import fetch_live_macro_pulse
+    market_asof = _resolve_market_asof(conn)
+
+    # Daily breadth and 52-week extremes from stored equity price history.
+    # Each symbol/date is deduplicated across providers before comparison.
+    market_snapshot_obj = None
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            WITH source_ranked AS (
+                SELECT symbol, trade_date, close, high, low,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY symbol, trade_date ORDER BY source DESC
+                       ) AS source_rank
+                FROM daily_prices
+                WHERE close IS NOT NULL AND trade_date <= (SELECT MAX(trade_date) FROM daily_prices)
+            ), daily AS (
+                SELECT symbol, trade_date, close, high, low,
+                       ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY trade_date DESC) AS day_rank
+                FROM source_ranked WHERE source_rank = 1
+            )
+            SELECT symbol, trade_date, close, high, low, day_rank
+            FROM daily WHERE day_rank <= 253
+            ORDER BY symbol, day_rank
+        """)
+        by_symbol: dict[str, list[tuple]] = {}
+        for row in cur.fetchall():
+            by_symbol.setdefault(str(row[0]).upper(), []).append(row)
+        sectors: dict[str, str] = {}
+        if market_asof:
+            try:
+                sectors = PointInTimeDataAccess(conn, asof=market_asof).get_universe_with_sectors()
+            except Exception:
+                sectors = {}
+        advancing = declining = unchanged = highs = lows = year_range_symbols = 0
+        excluded_extreme_moves = 0
+        movers: list[tuple[str, float, float]] = []
+        sector_changes: dict[str, list[float]] = {}
+        # Compare the same two stored sessions for every instrument. Comparing
+        # each symbol's last observation to its own previous row can turn a
+        # multi-week data gap or an unadjusted corporate action into a false
+        # one-day market move.
+        asof_text = market_asof.isoformat() if market_asof else None
+        previous_session = None
+        if asof_text:
+            cur.execute("SELECT MAX(trade_date) FROM daily_prices WHERE trade_date < ?", (asof_text,))
+            prior_row = cur.fetchone()
+            previous_session = str(prior_row[0])[:10] if prior_row and prior_row[0] else None
+        for symbol, rows in by_symbol.items():
+            # Exclude index series and non-equity proxy names from stock breadth.
+            if symbol.startswith('^') or symbol.startswith('NIFTY') or symbol in {'SENSEX', 'BANKNIFTY'}:
+                continue
+            latest = rows[0]
+            if len(rows) < 2 or not latest[2] or not previous_session or str(latest[1])[:10] != asof_text:
+                continue
+            prior = next((row for row in rows if str(row[1])[:10] == previous_session), None)
+            if prior is None or not prior[2]:
+                continue
+            close, previous = float(latest[2]), float(prior[2])
+            change = ((close / previous) - 1.0) * 100.0 if previous else 0.0
+            # Daily equity moves beyond this band require split/corporate-action
+            # verification before they can influence broad market indicators.
+            if abs(change) > 25.0:
+                excluded_extreme_moves += 1
+                continue
+            if change > 0.01:
+                advancing += 1
+            elif change < -0.01:
+                declining += 1
+            else:
+                unchanged += 1
+            movers.append((symbol, change, close))
+            sector = str(sectors.get(symbol) or 'Other')
+            sector_changes.setdefault(sector, []).append(change)
+            year_rows = [r for r in rows if int(r[5]) <= 253 and r[3] is not None and r[4] is not None]
+            if len(year_rows) >= 245:
+                year_range_symbols += 1
+                year_high = max(float(r[3]) for r in year_rows)
+                year_low = min(float(r[4]) for r in year_rows)
+                if close >= year_high * 0.999:
+                    highs += 1
+                if close <= year_low * 1.001:
+                    lows += 1
+        movers.sort(key=lambda item: abs(item[1]), reverse=True)
+        sectors_sorted = sorted(
+            ((name, sum(changes) / len(changes)) for name, changes in sector_changes.items() if len(changes) >= 3 and name.lower() != 'other'),
+            key=lambda item: item[1], reverse=True,
+        )
+        market_snapshot_obj = MarketSnapshotItem(
+            asof_date=market_asof.isoformat() if market_asof else None,
+            advancing=advancing, declining=declining, unchanged=unchanged,
+            new_52w_highs=highs, new_52w_lows=lows, year_range_symbols=year_range_symbols,
+            excluded_extreme_moves=excluded_extreme_moves,
+            top_movers=[MarketMoverItem(symbol=s, change_pct=round(c, 2), close=round(p, 2)) for s, c, p in movers[:5]],
+            sector_performance=[SectorMoveItem(sector=s, change_pct=round(c, 2)) for s, c in sectors_sorted[:6]],
+        )
+    except Exception as e:
+        logger.warning(f"Could not calculate stored-price market snapshot: {e}")
 
     # 1. Main Portfolio Status
     main_portfolio_status = None
@@ -546,6 +666,8 @@ def get_dashboard(
         return DashboardResponse(
             main_portfolio=main_portfolio_status,
             macro_pulse=macro_pulse_obj,
+            market_snapshot=market_snapshot_obj,
+            market_data_asof=market_asof.isoformat() if market_asof else None,
         )
 
     run_id, asof_date = latest
@@ -583,12 +705,37 @@ def get_dashboard(
 
     return DashboardResponse(
         latest_asof=str(asof_date) if asof_date else None,
+        market_data_asof=market_asof.isoformat() if market_asof else None,
         target_holdings=len(holdings),
         holdings=holdings,
         sector_allocations=sector_alloc,
         main_portfolio=main_portfolio_status,
         macro_pulse=macro_pulse_obj,
+        market_snapshot=market_snapshot_obj,
     )
+
+
+def _get_pit_price_return(conn: sqlite3.Connection, symbol: str, asof_date: date) -> tuple[float | None, float | None, list[float]]:
+    """Return latest close, one-year return and a 30-session sparkline from one PIT source."""
+    cur = conn.cursor()
+    cur.execute("""SELECT source, MAX(trade_date) AS latest, COUNT(DISTINCT trade_date) AS sessions
+        FROM daily_prices WHERE symbol=? AND trade_date<=? AND close IS NOT NULL
+        GROUP BY source ORDER BY latest DESC, sessions DESC""", (symbol, asof_date.isoformat()))
+    source_rows = cur.fetchall()
+    source_row = next((row for row in source_rows if row[2] >= 253), source_rows[0] if source_rows else None)
+    if not source_row:
+        return None, None, []
+    cur.execute("""SELECT close FROM daily_prices WHERE symbol=? AND source=?
+        AND trade_date<=? AND close IS NOT NULL ORDER BY trade_date DESC LIMIT 253""",
+        (symbol, source_row[0], asof_date.isoformat()))
+    rows = cur.fetchall()
+    if not rows or rows[0][0] is None:
+        return None, None, []
+    latest = float(rows[0][0])
+    # One trading year needs 252 prior sessions plus the latest close.
+    prior = float(rows[252][0]) if len(rows) >= 253 and rows[252][0] is not None else None
+    price_trend = [float(row[0]) for row in reversed(rows[:30]) if row[0] is not None]
+    return latest, ((latest / prior) - 1) * 100 if prior and prior > 0 else None, price_trend
 
 
 @router.get("/recommendations", response_model=RecommendationsResponse, dependencies=[Depends(require_auth)])
@@ -598,7 +745,7 @@ def get_recommendations(
     conn: sqlite3.Connection = Depends(get_db),
 ):
     """Retrieve ranked stock recommendations with full factor scores and plain-English rationales."""
-    asof_date = date.fromisoformat(asof) if asof else date.today()
+    asof_date = _resolve_market_asof(conn, asof) or date.today()
     pit = PointInTimeDataAccess(conn, asof=asof_date)
 
     scorecards = compute_composite_scores(pit, filter_universe_first=False)
@@ -618,11 +765,13 @@ def get_recommendations(
         logger.warning(f"Could not compute alpha predictions for recommendations: {e}")
 
     alpha_map = {p.symbol: p for p in alpha_picks}
+    alpha_model_available = alpha_service.get_status().status == "TRAINED"
     selected = scorecards[:top_n]
     recs = []
     weight_per_stock = round(1.0 / len(selected), 4)
 
     for sc in selected:
+        latest_close, one_year_return_pct, price_trend = _get_pit_price_return(conn, sc.symbol, asof_date)
         p_info = alpha_map.get(sc.symbol)
         p_outperform = p_info.p_outperform if p_info else 0.50
         exp_alpha = p_info.expected_alpha_pct if p_info else 0.0
@@ -654,6 +803,9 @@ def get_recommendations(
             StockRecommendationItem(
                 symbol=sc.symbol,
                 sector=sc.sector,
+                latest_close=latest_close,
+                one_year_return_pct=one_year_return_pct,
+                price_trend=price_trend,
                 action="BUY",
                 target_weight=weight_per_stock,
                 current_weight=0.0,
@@ -668,6 +820,7 @@ def get_recommendations(
                 arth_score=arth_score,
                 signal_agreement=agreement,
                 conviction_tier=conviction,
+                alpha_model_available=p_info is not None and alpha_model_available,
                 quality_metrics=sc.quality_details.get("metrics", {}),
                 valuation_metrics=sc.valuation_details.get("metrics", {}),
                 risk_metrics=sc.risk_details.get("metrics", {}),
@@ -692,7 +845,7 @@ def get_quick_picks(
     conn: sqlite3.Connection = Depends(get_db),
 ):
     """Retrieve top highest-conviction stocks powered by trained Calibrated Alpha Model & ArthScore."""
-    asof_date = date.fromisoformat(asof) if asof else date.today()
+    asof_date = _resolve_market_asof(conn, asof) or date.today()
     pit = PointInTimeDataAccess(conn, asof=asof_date)
 
     exclude_symbols: list[str] = []
@@ -736,6 +889,7 @@ def get_quick_picks(
                     arth_score=p.arth_score,
                     signal_agreement=p.signal_agreement,
                     conviction_tier=p.conviction_tier,
+                    alpha_model_available=alpha_service.get_status().status == "TRAINED",
                     model_name=p.model_name,
                     horizon_days=p.horizon_days,
                     multi_horizon_projections=p.multi_horizon_projections,
@@ -818,9 +972,10 @@ def get_quick_picks(
                 arth_score=round(sc.composite_score * 100.0, 1),
                 signal_agreement=1.0,
                 conviction_tier="SOLID OUTPERFORMER",
+                alpha_model_available=False,
                 model_name="Deterministic Heuristic Baseline",
                 horizon_days=horizon_days,
-                multi_horizon_projections={"90D": 0.0},
+                multi_horizon_projections={},
                 quality_metrics=sc.quality_details.get("metrics", {}),
                 valuation_metrics=sc.valuation_details.get("metrics", {}),
                 risk_metrics=sc.risk_details.get("metrics", {}),
@@ -1024,7 +1179,7 @@ def get_universe(
     conn: sqlite3.Connection = Depends(get_db),
 ):
     """Return active universe constituent count grouped by sector."""
-    asof_date = date.fromisoformat(asof) if asof else date.today()
+    asof_date = _resolve_market_asof(conn, asof) or date.today()
     pit = PointInTimeDataAccess(conn, asof=asof_date)
     sectors_map = pit.get_universe_with_sectors()
 
@@ -1051,7 +1206,7 @@ def get_recommendations_v2(
     conn: sqlite3.Connection = Depends(get_db),
 ):
     """Retrieve V0.2 decoupled Business Score, Investment Score, and Scenario projections."""
-    asof_date = date.fromisoformat(asof) if asof else date.today()
+    asof_date = _resolve_market_asof(conn, asof) or date.today()
     pit = PointInTimeDataAccess(conn, asof=asof_date)
 
     scorecards = compute_scorecards_v2(pit, sector_filter=sector)
@@ -1157,7 +1312,7 @@ def get_events_feed(
     conn: sqlite3.Connection = Depends(get_db),
 ):
     """Retrieve structured corporate disclosures and event intelligence stream."""
-    asof_date = date.fromisoformat(asof) if asof else date.today()
+    asof_date = _resolve_market_asof(conn, asof) or date.today()
     pit = PointInTimeDataAccess(conn, asof=asof_date)
 
     all_events = []
@@ -1239,6 +1394,59 @@ def get_stock_analysis(
     except Exception as e:
         logger.error(f"Error analyzing {clean_sym}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Analysis failed for {clean_sym}: {str(e)}") from e
+
+
+@router.get("/v2/analyze/{symbol}/price-history")
+def get_stock_price_history(
+    symbol: str,
+    period: str = "1Y",
+    conn: sqlite3.Connection = Depends(get_db),
+):
+    """Return one consistent stored market series; never synthesize prices."""
+    clean_sym = symbol.strip().upper()
+    period = period.upper()
+    if period not in {"1D", "30D", "6M", "1Y"}:
+        raise HTTPException(status_code=400, detail="period must be 1D, 30D, 6M, or 1Y")
+    cur = conn.cursor()
+    if period == "1D":
+        # Intraday data is optional; if it has not been collected, return empty
+        # rather than drawing a fabricated or stale daily series as today's move.
+        try:
+            cur.execute("""SELECT candle_time, close FROM intraday_candles
+                WHERE UPPER(symbol)=? AND timeframe='15m' AND is_warmup=0
+                  AND substr(candle_time, 1, 10) = (SELECT MAX(substr(candle_time, 1, 10))
+                    FROM intraday_candles WHERE UPPER(symbol)=? AND timeframe='15m' AND is_warmup=0)
+                ORDER BY candle_time DESC LIMIT 32""", (clean_sym, clean_sym))
+            rows = list(reversed(cur.fetchall()))
+        except sqlite3.OperationalError:
+            rows = []
+        points = [{"date": str(row[0]), "close": float(row[1])} for row in rows if row[1] is not None]
+        interval = "15m"
+    else:
+        limits = {"30D": 30, "6M": 126, "1Y": 252}
+        # Pick one consistent source with enough coverage for the selected range.
+        cur.execute("""SELECT source, COUNT(DISTINCT trade_date) AS sessions, MAX(trade_date) AS latest
+            FROM daily_prices WHERE UPPER(symbol)=? AND close IS NOT NULL
+            GROUP BY source ORDER BY latest DESC, sessions DESC""", (clean_sym,))
+        source_rows = cur.fetchall()
+        source_row = next((row for row in source_rows if row[1] >= limits[period]), source_rows[0] if source_rows else None)
+        source = source_row[0] if source_row else None
+        if source:
+            cur.execute("""SELECT trade_date, close FROM daily_prices
+                WHERE UPPER(symbol)=? AND source=? AND close IS NOT NULL
+                ORDER BY trade_date DESC LIMIT ?""", (clean_sym, source, limits[period]))
+            rows = list(reversed(cur.fetchall()))
+        else:
+            rows = []
+        points = [{"date": str(row[0])[:10], "close": float(row[1])} for row in rows]
+        interval = "1D"
+    return {
+        "symbol": clean_sym,
+        "asof_date": points[-1]["date"] if points else None,
+        "points": points,
+        "period": period,
+        "interval": interval,
+    }
 
 
 @router.get("/v2/portfolio/holdings", response_model=list[UserHoldingSchema])

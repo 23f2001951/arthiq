@@ -12,6 +12,8 @@ from invst.api.auth import get_current_user, require_auth
 from invst.api.mf_schemas import (
     MFAddSIPRequest,
     MFPortfolioResponse,
+    MFPowerAgeRequest,
+    MFPowerAgeResponse,
     MFReallocateSIPRequest,
     MFRecommendationRequest,
     MFRecommendationResponse,
@@ -33,11 +35,16 @@ from invst.ingestion.mf_ingestion import (
     search_schemes,
 )
 from invst.portfolio.mf_portfolio_service import (
+    CATEGORY_BENCHMARKS,
     add_or_update_sip,
     analyze_mf_portfolio,
     batch_record_sip_checkin,
+    calculate_power_age,
+    calculate_powerup_form,
+    delete_sip_from_portfolio,
     get_or_create_user_mf_portfolio,
     get_pending_sip_checkins,
+    get_scheme_category_rank,
     get_sip_checkin_history,
     predict_mf_portfolio_health,
     reallocate_user_sip,
@@ -158,6 +165,20 @@ def get_scheme_details(scheme_code: int):
             scheme_name=row[2],
         )
 
+        # Calculate PowerUp form rating
+        ret_3y_pct = round(trailing["3y"] * 100, 2) if trailing.get("3y") is not None else None
+        bench_info = CATEGORY_BENCHMARKS.get(row[4], {"expected_3y_cagr": 14.5})
+        rolling_alpha = round(ret_3y_pct - bench_info["expected_3y_cagr"], 2) if ret_3y_pct is not None else 0.0
+        downside_cap = risk.get("downside_capture") if risk.get("downside_capture") is not None else 92.0
+        power_badge = calculate_powerup_form(
+            fund_cagr_3y=ret_3y_pct,
+            rolling_alpha=rolling_alpha,
+            downside_capture=downside_cap,
+            expense_ratio=row[8] or 0.65,
+        )
+
+        cat_rank = get_scheme_category_rank(scheme_code, row[4], conn=conn)
+
         return {
             "scheme_code": row[0],
             "isin": row[1],
@@ -178,6 +199,8 @@ def get_scheme_details(scheme_code: int):
             "trailing_returns": trailing,
             "top_holdings": top_holdings,
             "analyst_conviction": conviction,
+            "powerup_form": power_badge,
+            "category_rank": cat_rank,
         }
     finally:
         conn.close()
@@ -284,6 +307,22 @@ def calculate_sip(payload: MFSIPCalculateRequest):
     )
 
 
+@router.post("/power-age/calculate", response_model=MFPowerAgeResponse)
+def calculate_power_age_route(payload: MFPowerAgeRequest):
+    """Calculate Power Age (financial independence freedom age) and year-by-year trajectory."""
+    return calculate_power_age(
+        current_age=payload.current_age,
+        current_corpus=payload.current_corpus,
+        monthly_sip=payload.monthly_sip,
+        annual_step_up_pct=payload.annual_step_up_pct,
+        expected_cagr_pct=payload.expected_cagr_pct,
+        target_monthly_expense_today=payload.target_monthly_expense_today,
+        inflation_pct=payload.inflation_pct,
+        swr_pct=payload.swr_pct,
+        max_age=payload.max_age,
+    )
+
+
 # -----------------------------------------------------------------------------
 # 5. User Portfolio & Active/Closed SIP Diagnostics
 # -----------------------------------------------------------------------------
@@ -318,8 +357,52 @@ def register_user_sip(
         custom_units=payload.custom_units,
         skipped_months=payload.skipped_months,
         paid_months=payload.paid_months,
+        sip_id=payload.sip_id,
     )
     return {"status": "success", "sip_id": sip_id, "portfolio_id": pid}
+
+
+@router.put("/portfolio/sip/{sip_id}", dependencies=[Depends(require_auth)])
+def edit_user_sip_route(
+    sip_id: str,
+    payload: MFAddSIPRequest,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    """Edit an existing SIP schedule and recalibrate its transactions and check-ins."""
+    uid = _extract_user_id(current_user)
+    pid = get_or_create_user_mf_portfolio(uid)
+    updated_sip_id = add_or_update_sip(
+        portfolio_id=pid,
+        scheme_code=payload.scheme_code,
+        amount=payload.amount,
+        start_date=payload.start_date,
+        status=payload.status,
+        end_date=payload.end_date,
+        folio_number=payload.folio_number,
+        step_up_pct=payload.step_up_pct,
+        sip_day=payload.sip_day,
+        custom_invested=payload.custom_invested,
+        custom_current_value=payload.custom_current_value,
+        custom_units=payload.custom_units,
+        skipped_months=payload.skipped_months,
+        paid_months=payload.paid_months,
+        sip_id=sip_id,
+    )
+    return {"status": "success", "sip_id": updated_sip_id, "portfolio_id": pid, "message": "SIP entry updated successfully"}
+
+
+@router.delete("/portfolio/sip/{sip_id}", dependencies=[Depends(require_auth)])
+def delete_user_sip_route(
+    sip_id: str,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    """Delete an individual SIP schedule and its associated transactions and check-ins."""
+    uid = _extract_user_id(current_user)
+    pid = get_or_create_user_mf_portfolio(uid)
+    deleted = delete_sip_from_portfolio(portfolio_id=pid, sip_id=sip_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="SIP schedule not found or already deleted")
+    return {"status": "success", "message": "SIP entry deleted successfully", "sip_id": sip_id, "portfolio_id": pid}
 
 
 @router.post("/portfolio/sip/{sip_id}/resume", dependencies=[Depends(require_auth)])

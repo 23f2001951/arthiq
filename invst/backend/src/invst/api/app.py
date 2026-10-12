@@ -13,7 +13,10 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from invst.api.routes import router as api_router
 from invst.api.mf_routes import router as mf_router
+from invst.api.intraday_routes import router as intraday_router
 from invst.config import get_project_root
+
+logger = logging.getLogger("invst.api")
 
 
 def create_app() -> FastAPI:
@@ -81,6 +84,40 @@ def create_app() -> FastAPI:
     # Register API routes
     app.include_router(api_router)
     app.include_router(mf_router, prefix="/api")
+    app.include_router(intraday_router)  # IIM: /api/v1/intraday/*
+
+    # IIM Scheduler lifecycle (single-worker only — see docs)
+    _scheduler_ref: list = []  # use list as mutable nonlocal container
+
+    @app.on_event("startup")
+    async def start_iim_scheduler():
+        try:
+            import os
+            from invst.db.engine import get_db_connection
+            from invst.intraday.data_feed import create_feed
+            from invst.intraday.scheduler import create_scheduler
+            from invst.intraday.signal_store import run_intraday_migration
+
+            conn = get_db_connection()
+            run_intraday_migration(conn)
+            conn.close()
+
+            kite_key = os.environ.get("KITE_API_KEY")
+            kite_token = os.environ.get("KITE_ACCESS_TOKEN")
+            feed = create_feed(kite_api_key=kite_key, kite_access_token=kite_token)
+            sched = create_scheduler(conn_factory=get_db_connection, feed=feed)
+            if sched:
+                sched.start()
+                _scheduler_ref.append(sched)
+                logger.info("IIM Scheduler started (mode=%s).", feed.mode)
+        except Exception as exc:
+            logger.exception("IIM Scheduler failed to start: %s", exc)
+
+    @app.on_event("shutdown")
+    async def stop_iim_scheduler():
+        if _scheduler_ref and _scheduler_ref[0].running:
+            _scheduler_ref[0].shutdown(wait=False)
+            logger.info("IIM Scheduler stopped.")
 
     # Mount pre-built React frontend if dist/ exists
     root = get_project_root()

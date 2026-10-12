@@ -20,9 +20,10 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { FactorRadarChart } from '../components/FactorRadarChart';
-import { PriceRangeLadder } from '../components/PriceRangeLadder';
+import { StockPriceLevelsChart, StockPricePoint } from '../components/StockPriceLevelsChart';
 import {
   analyzeStock,
+  fetchStockPriceHistory,
   fetchMacroPulse,
   fetchPortfolios,
   createPortfolio,
@@ -44,6 +45,9 @@ export const StockAnalyzerView: React.FC<StockAnalyzerViewProps> = ({ onNavigate
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<FullStockAnalysisResponse | null>(null);
+  const [priceHistory, setPriceHistory] = useState<StockPricePoint[]>([]);
+  const [priceHistoryAsof, setPriceHistoryAsof] = useState<string | null>(null);
+  const [priceHistoryPeriod, setPriceHistoryPeriod] = useState<'1D' | '30D' | '6M' | '1Y'>('1Y');
   const [pulse, setPulse] = useState<MacroPulseResponse | null>(null);
   const [activeThesisTab, setActiveThesisTab] = useState<'exec' | 'moat' | 'val' | 'tech' | 'tactical'>('exec');
   const [activeScoreDetail, setActiveScoreDetail] = useState<string | null>(null);
@@ -185,12 +189,24 @@ export const StockAnalyzerView: React.FC<StockAnalyzerViewProps> = ({ onNavigate
     if (!sym) return;
     setLoading(true);
     setError(null);
+    setPriceHistory([]);
+    setPriceHistoryAsof(null);
     try {
       const isLive = forceLive !== undefined ? forceLive : fetchLiveQuotes;
-      const res = await analyzeStock(sym, isLive);
+      const [res] = await Promise.all([analyzeStock(sym, isLive)]);
       setData(res);
       setSymbol(sym);
       setActiveThesisTab('exec');
+      setPriceHistoryPeriod('1Y');
+      fetchStockPriceHistory(sym, '1Y')
+        .then((history) => {
+          setPriceHistory(history.points || []);
+          setPriceHistoryAsof(history.asof_date);
+        })
+        .catch(() => {
+          // Keep the analysis useful when stored chart history is not available.
+          setPriceHistory([]);
+        });
     } catch (err: any) {
       setError(err.message || `No stock or ETF found for symbol "${sym}". Please verify the ticker symbol.`);
       setData(null);
@@ -218,7 +234,7 @@ export const StockAnalyzerView: React.FC<StockAnalyzerViewProps> = ({ onNavigate
           </p>
         </div>
 
-        {pulse && (
+        {pulse?.is_live ? (
           <div className="flex items-center space-x-3 px-4 py-2 rounded-2xl bg-white/[0.03] border border-white/[0.06] font-mono text-xs">
             <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
             <div>
@@ -240,6 +256,11 @@ export const StockAnalyzerView: React.FC<StockAnalyzerViewProps> = ({ onNavigate
                 {pulse.regime}
               </span>
             </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/[0.03] border border-white/[0.06] text-xs text-slate-400">
+            <Radio className="w-4 h-4 text-slate-500" />
+            Market regime unavailable
           </div>
         )}
       </div>
@@ -345,7 +366,7 @@ export const StockAnalyzerView: React.FC<StockAnalyzerViewProps> = ({ onNavigate
       {data && !loading && (
         <>
           {/* 3. Stock Identity & Technical Overview Card */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="p-5 rounded-2xl bg-[#090d19] border border-white/[0.08] space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-mono text-slate-400 uppercase">Instrument Symbol</span>
@@ -375,31 +396,6 @@ export const StockAnalyzerView: React.FC<StockAnalyzerViewProps> = ({ onNavigate
             </div>
 
             <div className="p-5 rounded-2xl bg-[#090d19] border border-white/[0.08] space-y-1">
-              <span className="text-[10px] font-mono text-slate-400 uppercase">52-Week Range & Position</span>
-              <div className="text-sm font-mono text-slate-300 font-semibold">
-                ₹{data.low_52w.toLocaleString('en-IN')} — ₹{data.high_52w.toLocaleString('en-IN')}
-              </div>
-              <div className="w-full bg-white/[0.05] h-1.5 rounded-full overflow-hidden mt-2">
-                <div
-                  className="bg-amber-400 h-full rounded-full"
-                  style={{
-                    width: `${Math.min(
-                      100,
-                      Math.max(
-                        0,
-                        ((data.current_price - data.low_52w) / Math.max(1, data.high_52w - data.low_52w)) * 100
-                      )
-                    )}%`,
-                  }}
-                />
-              </div>
-              <div className="flex justify-between text-[10px] font-mono text-slate-400 mt-1">
-                <span>52W Low: {data.technical_overview ? `${data.technical_overview.pct_from_52w_low > 0 ? '+' : ''}${data.technical_overview.pct_from_52w_low}%` : ''}</span>
-                <span>52W High: {data.technical_overview ? `${data.technical_overview.pct_from_52w_high}%` : ''}</span>
-              </div>
-            </div>
-
-            <div className="p-5 rounded-2xl bg-[#090d19] border border-white/[0.08] space-y-1">
               <span className="text-[10px] font-mono text-slate-400 uppercase">Technical Trend Structure</span>
               <div className="text-xs font-mono font-bold text-slate-200">
                 {data.technical_overview ? data.technical_overview.trend_phase.replace(/_/g, ' ') : 'NEUTRAL RANGE'}
@@ -409,7 +405,7 @@ export const StockAnalyzerView: React.FC<StockAnalyzerViewProps> = ({ onNavigate
               </div>
               <div className="flex items-center gap-2 mt-1">
                 <span className="text-[10px] font-mono text-slate-400">
-                  RSI(14): <strong className="text-slate-200">{data.technical_overview?.rsi_14.toFixed(1) || 50.0}</strong>
+                  RSI(14): <strong className="text-slate-200">{typeof data.technical_overview?.rsi_14 === 'number' ? data.technical_overview.rsi_14.toFixed(1) : '—'}</strong>
                 </span>
                 <span
                   className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full ${
@@ -428,18 +424,22 @@ export const StockAnalyzerView: React.FC<StockAnalyzerViewProps> = ({ onNavigate
             </div>
           </div>
 
-          {/* Interactive Price Range & Key Levels Ladder */}
-          <PriceRangeLadder
-            currentPrice={data.current_price}
-            low52w={data.low_52w}
-            high52w={data.high_52w}
-            dma50={data.dma_50}
-            dma200={data.dma_200}
-            dipTargetPrice={data.tactical_action?.dip_target_price}
-          />
+          <section className="stock-key-metrics" aria-label="Stock key metrics">
+            <div className="stock-key-metrics__heading"><div><span className="market-section-kicker">RESEARCH SNAPSHOT</span><h3>Key metrics</h3></div><span>Data as of {data.asof_date}</span></div>
+            <div className="stock-key-metrics__grid">
+              {[
+                ['Market Cap', data.market_cap_cr > 0 ? `₹${data.market_cap_cr.toLocaleString('en-IN', { maximumFractionDigits: 0 })} Cr` : '—'],
+                ['P/E (TTM)', data.score_breakdowns?.valuation?.sub_metrics?.pe_ratio || '—'],
+                ['ROE', data.score_breakdowns?.business_quality?.sub_metrics?.roe || '—'],
+                ['ROCE', data.score_breakdowns?.business_quality?.sub_metrics?.roce || '—'],
+                ['Debt / Equity', data.score_breakdowns?.risk?.sub_metrics?.debt_to_equity || '—'],
+                ['52W Range', data.low_52w > 0 && data.high_52w > 0 ? `₹${data.low_52w.toLocaleString('en-IN', { maximumFractionDigits: 1 })} — ₹${data.high_52w.toLocaleString('en-IN', { maximumFractionDigits: 1 })}` : '—'],
+              ].map(([label, value]) => <div className="stock-key-metrics__item" key={label}><span>{label}</span><strong>{value}</strong></div>)}
+            </div>
+          </section>
 
           {/* 4. HERO TACTICAL DECISION & EXECUTION PLAN */}
-          <div className="p-6 rounded-3xl bg-gradient-to-br from-[#0c1224] via-[#090e1c] to-[#070b16] border border-white/[0.12] shadow-2xl space-y-6">
+          <div className="workspace-verdict-card p-6 rounded-3xl bg-gradient-to-br from-[#0c1224] via-[#090e1c] to-[#070b16] border border-white/[0.12] shadow-2xl space-y-6">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-white/[0.08]">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
@@ -568,6 +568,30 @@ export const StockAnalyzerView: React.FC<StockAnalyzerViewProps> = ({ onNavigate
             </div>
           </div>
 
+          {/* Historical close chart follows the current verdict and key trade levels. */}
+          <StockPriceLevelsChart
+            symbol={data.symbol}
+            points={priceHistory}
+            asofDate={priceHistoryAsof}
+            quoteAsOf={data.asof_date}
+            currentPrice={data.current_price}
+            low52w={data.low_52w}
+            high52w={data.high_52w}
+            dma50={data.dma_50}
+            dma200={data.dma_200}
+            dipTargetPrice={data.tactical_action?.dip_target_price}
+            isLive={data.is_live_data}
+            period={priceHistoryPeriod}
+            onPeriodChange={(period) => {
+              setPriceHistoryPeriod(period);
+              setPriceHistory([]);
+              fetchStockPriceHistory(data.symbol, period).then((history) => {
+                setPriceHistory(history.points || []);
+                setPriceHistoryAsof(history.asof_date);
+              }).catch(() => setPriceHistory([]));
+            }}
+          />
+
           {/* 5. DECOUPLED FACTOR SCORES WITH DETAILED EXPLANATIONS */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -596,12 +620,12 @@ export const StockAnalyzerView: React.FC<StockAnalyzerViewProps> = ({ onNavigate
                   size={250}
                   stockName={data.symbol}
                   data={[
-                    { axis: 'Quality', score: data.business_quality_score, benchmark: 55, description: data.score_breakdowns?.business_quality?.tier },
-                    { axis: 'Valuation', score: data.valuation_score, benchmark: 50, description: data.score_breakdowns?.valuation?.tier },
-                    { axis: 'Growth', score: data.growth_score, benchmark: 52, description: data.score_breakdowns?.growth?.tier },
-                    { axis: 'Low Risk', score: data.risk_score, benchmark: 60, description: data.score_breakdowns?.risk?.tier },
-                    { axis: 'Technicals', score: data.technical_overview?.rsi_14 || 50, benchmark: 50, description: data.technical_overview?.trend_phase },
-                    { axis: 'Conviction', score: data.investment_score, benchmark: 50, description: data.verdict_badge },
+                    { axis: 'Quality', score: data.business_quality_score, description: data.score_breakdowns?.business_quality?.tier },
+                    { axis: 'Valuation', score: data.valuation_score, description: data.score_breakdowns?.valuation?.tier },
+                    { axis: 'Growth', score: data.growth_score, description: data.score_breakdowns?.growth?.tier },
+                    { axis: 'Low Risk', score: data.risk_score, description: data.score_breakdowns?.risk?.tier },
+                    ...(data.technical_overview?.rsi_14 != null ? [{ axis: 'RSI', score: data.technical_overview.rsi_14, description: data.technical_overview.trend_phase }] : []),
+                    { axis: 'Conviction', score: data.investment_score, description: data.verdict_badge },
                   ]}
                 />
                 <div className="w-full text-center text-[10px] font-mono text-slate-400 pt-2 border-t border-white/[0.06]">

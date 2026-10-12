@@ -39,10 +39,10 @@ DEFAULT_MODEL_PATH = Path(__file__).resolve().parents[3] / "data" / "processed" 
 class AlphaModelMetadata:
     """Metadata describing the trained alpha model state."""
 
-    model_name: str = "Calibrated Fund+Momentum Booster (Candidate 2)"
+    model_name: str = "Calibrated Quality-Value-Reversal Booster"
     model_type: str = "lightgbm"
     horizon_days: int = 90
-    feature_mode: str = "pair_fund_mom"
+    feature_mode: str = "cand_quality_value_reversal"
     calibration_method: str = "isotonic"
     sample_count: int = 0
     positive_ratio: float = 0.50
@@ -137,7 +137,7 @@ class AlphaModelService:
         start_date: date | str = "2016-01-01",
         horizon_days: int = 90,
         model_type: str = "lightgbm",
-        feature_mode: str = "pair_fund_mom",
+        feature_mode: str = "cand_quality_value_reversal",
         calibration_method: str = "isotonic",
         benchmark_symbol: str = "NIFTY500",
     ) -> AlphaModelMetadata:
@@ -165,7 +165,7 @@ class AlphaModelService:
         y_hist: list[int] = []
         full_feat_names: list[str] = []
 
-        # Collect historical training cross-sections
+        # Collect historical training cross-sections across full universe
         for past_d in rebalance_dates:
             if past_d >= cutoff_date:
                 break
@@ -175,8 +175,8 @@ class AlphaModelService:
                 univ = past_pit.get_universe()
                 if not univ:
                     continue
-                # Use sample of universe candidates
-                sample = univ[:15]
+                # Use all available universe candidates
+                sample = univ
                 X_p, p_syms, f_names = build_ml_feature_dataset(
                     past_pit, sample, composite_scores_map=dict.fromkeys(sample, 50.0)
                 )
@@ -198,7 +198,7 @@ class AlphaModelService:
             )
             # Fallback bootstrapping to guarantee operational model
             rng = np.random.RandomState(42)
-            k_feats = 6 if feature_mode == "pair_fund_mom" else 24
+            k_feats = len(FEATURE_SUBSETS.get(feature_mode, [])) or 24
             synth_X = rng.randn(40, k_feats)
             synth_y = np.array([0, 1] * 20)
             clf = OutperformanceClassifier(model_type=model_type, calibration_method=calibration_method)
@@ -249,8 +249,8 @@ class AlphaModelService:
         pos_ratio = round(float(np.mean(y_arr)), 4)
 
         model_friendly_name = (
-            "Calibrated Fund+Momentum Booster (Candidate 2)"
-            if feature_mode == "pair_fund_mom"
+            "Calibrated Quality-Value-Reversal Booster"
+            if feature_mode in ["cand_quality_value_reversal", "cand_value_reversal"]
             else f"Calibrated {feature_mode.upper()} Model"
         )
 
@@ -293,7 +293,7 @@ class AlphaModelService:
 
             scorecards = compute_composite_scores(pit, filter_universe_first=False)
             comp_map = {sc.symbol: sc.composite_score * 100.0 for sc in scorecards}
-            sample = univ[:30]
+            sample = univ
 
             X_curr, valid_syms, _ = build_ml_feature_dataset(
                 pit, sample, composite_scores_map=comp_map
@@ -357,7 +357,7 @@ class AlphaModelService:
                 conn,
                 asof_date=asof_d,
                 horizon_days=horizon_days,
-                feature_mode="pair_fund_mom",
+                feature_mode="cand_quality_value_reversal",
                 model_type="lightgbm",
             )
 

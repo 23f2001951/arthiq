@@ -3,14 +3,10 @@ import { fetchDashboard } from '../api/client';
 import { DashboardResponse } from '../types/api';
 import { KPICard } from '../components/KPICard';
 import { SectorAllocation } from '../components/SectorAllocation';
-import { TrendSparkline } from '../components/TrendSparkline';
 import { CapsuleBarChart } from '../components/CapsuleBarChart';
 import { MarketRegimeArcGauge } from '../components/MarketRegimeArcGauge';
-import { TradeOrderBlotter } from '../components/TradeOrderBlotter';
-import { QuickSizingConverter } from '../components/QuickSizingConverter';
-import { HeroClarityBanner } from '../components/HeroClarityBanner';
-import { FiveToolsBento } from '../components/FiveToolsBento';
-import { HowItWorksBento } from '../components/HowItWorksBento';
+import { useDailyMarketRefresh } from '../hooks/useDailyMarketRefresh';
+import { MarketBenchmarkPanel } from '../components/MarketBenchmarkPanel';
 import {
   Wallet,
   PieChart,
@@ -107,6 +103,8 @@ const DashboardViewInner: React.FC<DashboardViewProps> = ({ onNavigateTab }) => 
     }
   };
 
+  useDailyMarketRefresh(loadData);
+
   useEffect(() => {
     loadData();
   }, []);
@@ -145,30 +143,24 @@ const DashboardViewInner: React.FC<DashboardViewProps> = ({ onNavigateTab }) => 
   const modelHoldings = data.holdings || [];
 
   return (
-    <div className="space-y-10">
-      {/* 1. Hero Clarity Banner */}
-      <HeroClarityBanner
-        onExploreTools={() => onNavigateTab && onNavigateTab('recommendations')}
-        onLaunchBacktest={() => onNavigateTab && onNavigateTab('backtest')}
-      />
-
-      {/* 2. Top Header & Fast Actions */}
-      <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
+    <div className="dashboard-workspace space-y-8">
+      {/* Portfolio context and actions */}
+      <div className="dashboard-workspace__header flex flex-wrap items-center justify-between gap-4 pt-2">
         <div>
           <div className="flex items-center space-x-2.5">
             <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
-              {mainPort?.portfolio_name || 'Main Portfolio'} Dashboard
+              Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 18 ? 'afternoon' : 'evening'}
             </h2>
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-winsor-950 text-winsor-400 border border-winsor-800/60 font-mono flex items-center">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse mr-1.5" />
-              LIVE ENGINE
+            <span className="dashboard-asof-badge px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-winsor-950 text-winsor-300 border border-winsor-800/60 font-mono flex items-center">
+              MARKET SNAPSHOT
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            Real portfolio status & risk parity constraints as of{' '}
+              Your market overview and investment intelligence · prices as of{' '}
             <span className="text-winsor-400 font-mono font-bold">
-              {data.latest_asof || new Date().toISOString().split('T')[0]}
+              {data.market_data_asof || 'unavailable'}
             </span>
+              {data.latest_asof && <span> · strategy weights as of <span className="text-winsor-400 font-mono font-bold">{data.latest_asof}</span></span>}
           </p>
         </div>
 
@@ -193,9 +185,42 @@ const DashboardViewInner: React.FC<DashboardViewProps> = ({ onNavigateTab }) => 
         </div>
       </div>
 
+      <MarketBenchmarkPanel liveQuote={macro?.is_live ? macro.nifty_50 : null} liveAsOf={data.market_data_asof} />
+
+      {/* Point-in-time market breadth and leadership from stored price history. */}
+      <section className="dashboard-market-pulse space-y-3" aria-label="Market session statistics">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div><span className="market-section-kicker">MARKET PULSE</span><h3 className="text-lg font-bold text-white">Breadth & leadership</h3></div>
+          <span className="text-[10px] font-mono text-slate-500">Daily price snapshot · {data.market_snapshot?.asof_date || data.market_data_asof || 'date unavailable'}</span>
+        </div>
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+          {[
+            { label: 'Market breadth', value: data.market_snapshot ? `${data.market_snapshot.advancing.toLocaleString('en-IN')} / ${data.market_snapshot.declining.toLocaleString('en-IN')}` : '—', detail: 'Advancing / declining stocks', tone: 'text-emerald-700' },
+            { label: '52-week range', value: data.market_snapshot?.year_range_symbols ? `${data.market_snapshot.new_52w_highs} / ${data.market_snapshot.new_52w_lows}` : '—', detail: data.market_snapshot?.year_range_symbols ? `New highs / lows · ${data.market_snapshot.year_range_symbols} stocks with ≥245 sessions` : 'Insufficient stored history', tone: 'text-winsor-500' },
+            { label: 'India VIX', value: macro?.is_live ? safeToFixed(macro.india_vix, 2) : '—', detail: macro?.is_live ? 'Live volatility index' : 'Live quote unavailable', tone: 'text-winsor-500' },
+            { label: 'FII / DII flows', value: 'Unavailable', detail: 'No connected flow source; no estimate shown', tone: 'text-slate-500' },
+          ].map((item) => <div key={item.label} className="market-stat-card rounded-2xl border border-white/10 bg-slate-900/35 p-4">
+            <span className="text-[10px] font-bold uppercase tracking-[.12em] text-slate-500">{item.label}</span>
+            <strong className={`mt-2 block font-mono text-xl ${item.tone}`}>{item.value}</strong>
+            <span className="mt-1 block text-[11px] text-slate-500">{item.detail}</span>
+          </div>)}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <div className="market-stat-card rounded-2xl border border-white/10 bg-slate-900/35 p-4">
+            <div className="mb-3 flex items-center justify-between"><h4 className="text-sm font-bold text-white">Sector performance</h4><span className="text-[10px] text-slate-500">equal-weighted daily move</span></div>
+            {data.market_snapshot?.sector_performance?.length ? <div className="space-y-3">{data.market_snapshot.sector_performance.map((sector) => <div key={sector.sector} className="grid grid-cols-[minmax(8rem,1fr)_minmax(5rem,1.2fr)_auto] items-center gap-3 text-xs"><span className="truncate capitalize text-slate-400">{sector.sector.replace(/_/g, ' ')}</span><span className="h-1.5 overflow-hidden rounded-full bg-stone-200"><i className={`block h-full rounded-full ${sector.change_pct >= 0 ? 'bg-emerald-600' : 'bg-rose-600'}`} style={{ width: `${Math.min(100, Math.max(4, Math.abs(sector.change_pct) * 3))}%` }} /></span><span className={`font-mono font-bold ${sector.change_pct >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{sector.change_pct > 0 ? '+' : ''}{sector.change_pct.toFixed(2)}%</span></div>)}</div> : <p className="py-4 text-xs text-slate-500">Sector coverage is unavailable for this stored-price snapshot.</p>}
+          </div>
+          <div className="market-stat-card rounded-2xl border border-white/10 bg-slate-900/35 p-4">
+            <div className="mb-3 flex items-center justify-between"><h4 className="text-sm font-bold text-white">Top movers</h4><span className="text-[10px] text-slate-500">largest absolute daily changes</span></div>
+            {data.market_snapshot?.top_movers?.length ? <div className="space-y-2.5">{data.market_snapshot.top_movers.map((mover) => <div key={mover.symbol} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 text-xs"><span className="font-mono font-bold text-slate-300">{mover.symbol}</span><span className="font-mono text-slate-500">₹{mover.close.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span><span className={`font-mono font-bold ${mover.change_pct >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{mover.change_pct > 0 ? '+' : ''}{mover.change_pct.toFixed(2)}%</span></div>)}</div> : <p className="py-4 text-xs text-slate-500">No comparable daily closes are available for movers.</p>}
+          </div>
+        </div>
+        {!!data.market_snapshot?.excluded_extreme_moves && <p className="text-[10px] text-slate-500">{data.market_snapshot.excluded_extreme_moves} extreme move{data.market_snapshot.excluded_extreme_moves === 1 ? '' : 's'} excluded pending corporate-action verification.</p>}
+      </section>
+
       {/* Critical Redline & Sector Alerts */}
       {mainPort?.critical_redline_alerts && mainPort.critical_redline_alerts.length > 0 && (
-        <div className="p-4 bg-rose-950/40 border border-rose-800/60 rounded-2xl text-rose-200">
+        <div className="dashboard-critical-alert p-4 bg-rose-950/40 border border-rose-800/60 rounded-2xl text-rose-200">
           <div className="flex items-center space-x-2 text-xs font-bold text-rose-400 uppercase tracking-wider mb-1">
             <span>🚨 Critical Redline Alert on Active Holdings</span>
           </div>
@@ -208,7 +233,7 @@ const DashboardViewInner: React.FC<DashboardViewProps> = ({ onNavigateTab }) => 
       )}
 
       {mainPort?.sector_warnings && mainPort.sector_warnings.length > 0 && (
-        <div className="p-4 bg-amber-950/40 border border-amber-800/60 rounded-2xl text-amber-200">
+        <div className="dashboard-critical-alert p-4 bg-amber-950/40 border border-amber-800/60 rounded-2xl text-amber-200">
           <div className="flex items-center space-x-2 text-xs font-bold text-amber-400 uppercase tracking-wider mb-1">
             <span>⚠️ Sector Concentration Warning (&gt; 40% Cap)</span>
           </div>
@@ -221,7 +246,7 @@ const DashboardViewInner: React.FC<DashboardViewProps> = ({ onNavigateTab }) => 
       )}
 
       {/* 3. Top 4 Institutional KPI Metric Cards (Real Values) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="dashboard-kpis grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard
           label="Total Portfolio Value"
           value={hasMainHoldings ? `₹${safeToLocale(Math.round(safeNum(mainPort?.total_current_value)))}` : '₹0'}
@@ -230,7 +255,6 @@ const DashboardViewInner: React.FC<DashboardViewProps> = ({ onNavigateTab }) => 
           deltaPositive={hasMainHoldings ? safeNum(mainPort?.total_unrealized_pnl) >= 0 : true}
           icon={Wallet}
           variant="emerald"
-          sparkline={true}
         />
         <KPICard
           label="Portfolio Health Score"
@@ -240,32 +264,29 @@ const DashboardViewInner: React.FC<DashboardViewProps> = ({ onNavigateTab }) => 
           deltaPositive={hasMainHoldings ? safeNum(mainPort?.overall_health_score) >= 60 : true}
           icon={TrendingUp}
           variant="winsor"
-          sparkline={true}
         />
         <KPICard
           label="NSE Market Volatility"
-          value={safeToFixed(macro?.india_vix ?? 14.5, 2)}
-          subtitle={macro?.regime_description || 'India VIX Regime'}
-          delta={macro?.regime ? `${macro.regime} Regime` : 'NEUTRAL'}
-          deltaPositive={macro?.regime !== 'HIGH_VOLATILITY'}
+          value={macro?.is_live ? safeToFixed(macro.india_vix, 2) : '—'}
+          subtitle={macro?.is_live ? macro.regime_description : 'Live India VIX unavailable'}
+          delta={macro?.is_live ? `${macro.regime} Regime` : 'Unavailable'}
+          deltaPositive={!macro?.is_live || macro.regime !== 'HIGH_VOLATILITY'}
           icon={Activity}
           variant={macro?.regime === 'HIGH_VOLATILITY' ? 'amber' : 'info'}
-          sparkline={false}
         />
         <KPICard
           label="Active Positions"
-          value={hasMainHoldings ? `${mainPort?.holdings_count || positions.length} Stocks` : `${data.target_holdings || 8} Target`}
-          subtitle={hasMainHoldings ? (mainPort?.portfolio_name || 'Main Portfolio') : 'Algorithmic 8-stock target'}
-          delta={hasMainHoldings ? ((mainPort?.critical_redline_alerts?.length ?? 0) === 0 ? 'Zero Redlines' : `${mainPort?.critical_redline_alerts?.length} Redline Alert`) : 'Model Target'}
+          value={hasMainHoldings ? `${mainPort?.holdings_count || positions.length} Stocks` : modelHoldings.length > 0 ? `${modelHoldings.length} Target` : '—'}
+          subtitle={hasMainHoldings ? (mainPort?.portfolio_name || 'Main Portfolio') : modelHoldings.length > 0 ? 'Algorithmic target model' : 'No model run available'}
+          delta={hasMainHoldings ? ((mainPort?.critical_redline_alerts?.length ?? 0) === 0 ? 'Zero Redlines' : `${mainPort?.critical_redline_alerts?.length} Redline Alert`) : modelHoldings.length > 0 ? 'Model Target' : 'Unavailable'}
           deltaPositive={hasMainHoldings ? (mainPort?.critical_redline_alerts?.length ?? 0) === 0 : true}
           icon={PieChart}
           variant="purple"
-          sparkline={true}
         />
       </div>
 
       {/* 4. Real Stock Weight & Performance Attribution + Market Regime Arc Dial */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="dashboard-allocation-analysis grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-7">
           <CapsuleBarChart
             positions={positions}
@@ -282,44 +303,37 @@ const DashboardViewInner: React.FC<DashboardViewProps> = ({ onNavigateTab }) => 
           />
         </div>
         <div className="lg:col-span-5">
-          <MarketRegimeArcGauge
-            score={hasMainHoldings ? Math.round(safeNum(mainPort?.overall_health_score, 75)) : 75}
-            regime={macro?.regime || 'NEUTRAL'}
-            vix={safeNum(macro?.india_vix, 14.5)}
-          />
+          {macro?.is_live ? (
+            <MarketRegimeArcGauge
+              regime={macro.regime}
+              vix={macro.india_vix}
+              description={macro.regime_description}
+            />
+          ) : (
+            <div className="glass-panel h-full min-h-64 p-6 flex flex-col justify-center">
+              <h3 className="text-sm font-semibold text-white">Market regime unavailable</h3>
+              <p className="mt-2 text-xs text-slate-400">The dashboard has no current macro pulse to display.</p>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* 5. Five Tools Bento */}
-      <FiveToolsBento onSelectTool={(tool, subTool) => onNavigateTab && onNavigateTab(tool, subTool)} />
-
-      {/* 6. How Arth IQ Works */}
-      <HowItWorksBento />
-
-      {/* 7. Order Execution Blotter + Sizing Converter */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-7">
-          <TradeOrderBlotter />
-        </div>
-        <div className="lg:col-span-5">
-          <QuickSizingConverter symbol="RELIANCE" />
-        </div>
-      </div>
-
-      {/* 8. Sector Exposure Distribution */}
+      {/* Sector exposure distribution */}
       {((mainPort?.sector_exposures && Object.keys(mainPort.sector_exposures).length > 0) ||
         (data.sector_allocations && Object.keys(data.sector_allocations).length > 0)) && (
-        <SectorAllocation
-          sectors={
-            mainPort?.sector_exposures && Object.keys(mainPort.sector_exposures).length > 0
-              ? mainPort.sector_exposures
-              : (data.sector_allocations || {})
-          }
-        />
+        <div className="dashboard-sector-allocation">
+          <SectorAllocation
+            sectors={
+              mainPort?.sector_exposures && Object.keys(mainPort.sector_exposures).length > 0
+                ? mainPort.sector_exposures
+                : (data.sector_allocations || {})
+            }
+          />
+        </div>
       )}
 
-      {/* 9. Portfolio Holdings & Model Table */}
-      <div className="glass-panel overflow-hidden">
+      {/* Portfolio holdings and model table */}
+      <div className="dashboard-holdings glass-panel overflow-hidden">
         <div className="p-5 border-b border-white/[0.08] flex flex-wrap items-center justify-between gap-4 bg-[#07090f]/70">
           <div className="flex items-center space-x-2">
             <button
@@ -367,17 +381,12 @@ const DashboardViewInner: React.FC<DashboardViewProps> = ({ onNavigateTab }) => 
               <table className="w-full text-left text-xs text-slate-300">
                 <thead className="bg-[#080b13] text-slate-400 font-bold uppercase tracking-wider border-b border-white/[0.06]">
                   <tr>
-                    <th className="py-3.5 px-4">Symbol</th>
-                    <th className="py-3.5 px-4">Sector</th>
-                    <th className="py-3.5 px-4 text-right">Shares</th>
-                    <th className="py-3.5 px-4 text-right">Avg Price</th>
-                    <th className="py-3.5 px-4 text-right">Current Price</th>
-                    <th className="py-3.5 px-4 text-right">Current Value</th>
+                    <th className="py-3.5 px-4">Holding</th>
+                    <th className="py-3.5 px-4">Shares / cost</th>
+                    <th className="py-3.5 px-4 text-right">CMP / value</th>
                     <th className="py-3.5 px-4 w-36">Weight</th>
                     <th className="py-3.5 px-4 text-right">Unrealized P&L</th>
-                    <th className="py-3.5 px-4 text-center">12M Exp</th>
-                    <th className="py-3.5 px-4 text-center">Action Advice</th>
-                    <th className="py-3.5 px-4">Rationale</th>
+                    <th className="py-3.5 px-4 text-center">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/[0.04] font-medium">
@@ -387,7 +396,6 @@ const DashboardViewInner: React.FC<DashboardViewProps> = ({ onNavigateTab }) => 
                     const pnlSign = pnl >= 0 ? '+' : '';
                     const isPositive = pnl >= 0;
                     const weight = safeNum(p.weight_pct, 0);
-                    const expReturn = safeNum(p.expected_return_12m, 0);
                     const sectorName = String(p.sector || 'General').replace(/_/g, ' ');
 
                     const action = p.action_badge || 'HOLD';
@@ -399,23 +407,17 @@ const DashboardViewInner: React.FC<DashboardViewProps> = ({ onNavigateTab }) => 
                         key={p.symbol}
                         className="hover:bg-sky-500/[0.04] transition-all duration-150 group border-l-2 border-transparent hover:border-sky-400"
                       >
-                        <td className="py-3.5 px-4 font-black text-white font-mono text-sm tracking-tight group-hover:text-sky-300 transition-colors">
-                          {p.symbol}
+                        <td className="py-3.5 px-4">
+                          <span className="block font-black text-white font-mono text-sm tracking-tight group-hover:text-sky-300 transition-colors">{p.symbol}</span>
+                          <span className="mt-0.5 block text-[10px] capitalize text-slate-500">{sectorName}</span>
                         </td>
-                        <td className="py-3.5 px-4 capitalize text-slate-400">
-                          {sectorName}
-                        </td>
-                        <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-200">
+                        <td className="py-3.5 px-4 font-mono text-slate-300">
                           {safeToLocale(p.shares)}
-                        </td>
-                        <td className="py-3.5 px-4 text-right font-mono text-slate-400">
-                          ₹{safeToLocale(p.buy_price, 2)}
+                          <span className="block text-[10px] text-slate-500">Avg ₹{safeToLocale(p.buy_price, 2)}</span>
                         </td>
                         <td className="py-3.5 px-4 text-right font-mono font-bold text-white">
                           ₹{safeToLocale(p.current_price, 2)}
-                        </td>
-                        <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-200">
-                          ₹{safeToLocale(Math.round(safeNum(p.current_value)))}
+                          <span className="block text-[10px] font-normal text-slate-500">₹{safeToLocale(Math.round(safeNum(p.current_value)))}</span>
                         </td>
                         <td className="py-3.5 px-4">
                           <div className="space-y-1">
@@ -432,10 +434,7 @@ const DashboardViewInner: React.FC<DashboardViewProps> = ({ onNavigateTab }) => 
                           {pnlSign}₹{safeToLocale(Math.round(pnl))}
                           <div className="text-[10px] opacity-80">{pnlSign}{safeToFixed(pnlPct, 2)}%</div>
                         </td>
-                        <td className="py-3.5 px-4 text-center font-mono font-bold text-slate-200">
-                          {expReturn >= 0 ? `+${safeToFixed(expReturn, 1)}%` : `${safeToFixed(expReturn, 1)}%`}
-                        </td>
-                        <td className="py-3.5 px-4 text-center">
+                        <td className="py-3.5 px-4 text-center" title={p.action_rationale || ''}>
                           <span
                             className={`inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold border ${
                               isAccumulate
@@ -452,9 +451,6 @@ const DashboardViewInner: React.FC<DashboardViewProps> = ({ onNavigateTab }) => 
                             />
                             <span>{action}</span>
                           </span>
-                        </td>
-                        <td className="py-3.5 px-4 text-xs text-slate-400 max-w-xs truncate" title={p.action_rationale || ''}>
-                          {p.action_rationale || '—'}
                         </td>
                       </tr>
                     );
@@ -477,7 +473,6 @@ const DashboardViewInner: React.FC<DashboardViewProps> = ({ onNavigateTab }) => 
                     <th className="py-3.5 px-4">Sector</th>
                     <th className="py-3.5 px-4">Action</th>
                     <th className="py-3.5 px-4 w-48">Target Weight</th>
-                    <th className="py-3.5 px-4 text-center">Trend (30D)</th>
                     <th className="py-3.5 px-4 text-right">Target Shares</th>
                     <th className="py-3.5 px-4 text-center">Status</th>
                   </tr>
@@ -527,14 +522,6 @@ const DashboardViewInner: React.FC<DashboardViewProps> = ({ onNavigateTab }) => 
                               />
                             </div>
                           </div>
-                        </td>
-                        <td className="py-3.5 px-4 text-center">
-                          <TrendSparkline
-                            color="cyan"
-                            isPositive={true}
-                            width={75}
-                            height={20}
-                          />
                         </td>
                         <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-200">
                           {h.shares_target !== null && h.shares_target !== undefined

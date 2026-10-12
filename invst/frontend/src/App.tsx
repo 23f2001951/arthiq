@@ -43,6 +43,9 @@ const ModelTrainingView = React.lazy(() =>
 const MutualFundsView = React.lazy(() =>
   import('./views/MutualFundsView').then((m) => ({ default: m.MutualFundsView }))
 );
+const IntradayView = React.lazy(() =>
+  import('./views/IntradayView').then((m) => ({ default: m.default }))
+);
 
 const ViewLoadingSkeleton: React.FC = () => (
   <div className="space-y-6 animate-pulse py-4">
@@ -65,6 +68,17 @@ export const App: React.FC = () => {
   const [analyzerSymbol, setAnalyzerSymbol] = useState<string>('TCS');
   const [systemHealthy, setSystemHealthy] = useState<boolean>(true);
   const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
+  const [workspaceTheme, setWorkspaceTheme] = useState<'terminal' | 'research'>(() => {
+    try {
+      const savedTheme = localStorage.getItem('arth_workspace_theme_v2');
+      return savedTheme === 'terminal' ? 'terminal' : 'research';
+    } catch { return 'research'; }
+  });
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = workspaceTheme;
+    try { localStorage.setItem('arth_workspace_theme_v2', workspaceTheme); } catch {}
+  }, [workspaceTheme]);
 
   // Sidebar collapse state with localStorage persistence
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
@@ -105,6 +119,7 @@ export const App: React.FC = () => {
         } else {
           const investorTabs: NavTab[] = [
             'dashboard',
+            'intraday',
             'recommendations',
             'analyzer',
             'portfolio',
@@ -146,6 +161,7 @@ export const App: React.FC = () => {
       } else {
         const investorTabs: NavTab[] = [
           'dashboard',
+          'intraday',
           'recommendations',
           'analyzer',
           'portfolio',
@@ -224,7 +240,7 @@ export const App: React.FC = () => {
 
   // 3. Authenticated: Render Main Portal with SidebarNav on the Left
   return (
-    <div className="min-h-screen flex bg-[#040508] text-slate-100 font-sans selection:bg-amber-500 selection:text-slate-950">
+    <div className="app-shell min-h-screen flex bg-[#040508] text-slate-100 font-sans selection:bg-amber-500 selection:text-slate-950">
       {/* Collapsible Left-Side Navigation Bar */}
       <SidebarNav
         currentTab={currentTab}
@@ -251,6 +267,8 @@ export const App: React.FC = () => {
             setCurrentTab('analyzer');
           }}
           onOpenMobileSidebar={() => setIsMobileOpen(true)}
+          workspaceTheme={workspaceTheme}
+          onToggleTheme={() => setWorkspaceTheme((theme) => theme === 'terminal' ? 'research' : 'terminal')}
         />
 
         {/* Live Market Ticker Tape */}
@@ -264,7 +282,7 @@ export const App: React.FC = () => {
           />
         )}
 
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        <main className="flex-1 max-w-[1760px] w-full mx-auto px-4 sm:px-6 lg:px-8 2xl:px-10 py-6 lg:py-8 space-y-6 lg:space-y-8">
           <div key={currentTab} className="animate-fade-in-up space-y-8">
             <React.Suspense fallback={<ViewLoadingSkeleton />}>
               {/* Admin Platform Views */}
@@ -285,10 +303,15 @@ export const App: React.FC = () => {
                   }}
                 />
               )}
+              {currentTab === 'intraday' && <IntradayView />}
               {currentTab === 'recommendations' && (
                 <RecommendationsView
                   activeSubTab={stockIdeasSubTab}
                   onSelectSubTab={setStockIdeasSubTab}
+                  onAnalyzeSymbol={(symbol) => {
+                    setAnalyzerSymbol(symbol);
+                    setCurrentTab('analyzer');
+                  }}
                 />
               )}
               {currentTab === 'analyzer' && (

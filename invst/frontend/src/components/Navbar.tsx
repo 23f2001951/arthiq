@@ -20,6 +20,7 @@ import {
 
 export type NavTab =
   | 'dashboard'
+  | 'intraday'
   | 'recommendations'
   | 'analyzer'
   | 'mf_screener'

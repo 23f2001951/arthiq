@@ -96,6 +96,22 @@ def test_v2_analyze_endpoint(client):
     assert "horizon_3y" in data
 
 
+def test_stock_price_history_endpoint(client):
+    response = client.get("/api/v2/analyze/TCS/price-history")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["symbol"] == "TCS"
+    assert "points" in data
+    assert "asof_date" in data
+    assert all({"date", "close"}.issubset(point) for point in data["points"])
+    assert [point["date"] for point in data["points"]] == sorted(point["date"] for point in data["points"])
+    for period in ("1D", "30D", "6M", "1Y"):
+        period_response = client.get(f"/api/v2/analyze/TCS/price-history?period={period}")
+        assert period_response.status_code == 200
+        assert period_response.json()["period"] == period
+    assert client.get("/api/v2/analyze/TCS/price-history?period=5Y").status_code == 400
+
+
 def test_v2_portfolio_endpoints(client):
     payload = {
         "holdings": [

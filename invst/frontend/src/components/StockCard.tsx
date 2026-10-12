@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { ChevronDown, ChevronUp, Sparkles, Building2, ShieldCheck } from 'lucide-react';
 import { StockRecommendationItem } from '../types/api';
 import { FactorDials } from './FactorDials';
-import { TrendSparkline } from './TrendSparkline';
 
 interface StockCardProps {
   stock: StockRecommendationItem;
@@ -45,14 +44,11 @@ export const StockCard: React.FC<StockCardProps> = ({ stock, rank }) => {
         <div className="flex items-center space-x-4 self-end sm:self-auto">
           <div className="hidden sm:block text-right">
             <span className="text-[10px] uppercase tracking-wider text-slate-500 block mb-0.5 font-mono">
-              30D Momentum
+              Sentiment Overlay
             </span>
-            <TrendSparkline
-              color="cyan"
-              isPositive={stock.sentiment_overlay_points >= 0}
-              width={75}
-              height={20}
-            />
+            <span className="font-mono text-sm font-bold text-slate-200">
+              {stock.sentiment_overlay_points > 0 ? '+' : ''}{stock.sentiment_overlay_points.toFixed(1)} pts
+            </span>
           </div>
 
           <div className="text-right bg-[#090b14] px-3.5 py-1.5 rounded-2xl border border-white/[0.06]">
@@ -78,10 +74,10 @@ export const StockCard: React.FC<StockCardProps> = ({ stock, rank }) => {
       {/* Factor Dials */}
       <div className="mt-4 pt-3 border-t border-white/[0.06] relative z-10">
         <FactorDials
-          compositeScore={stock.composite_score * 100}
-          qualityScore={stock.quality_score * 100}
-          valuationScore={stock.valuation_score * 100}
-          riskScore={stock.risk_score * 100}
+          compositeScore={stock.composite_score}
+          qualityScore={stock.quality_score}
+          valuationScore={stock.valuation_score}
+          riskScore={stock.risk_score}
           sentimentOverlay={stock.sentiment_overlay_points}
         />
       </div>

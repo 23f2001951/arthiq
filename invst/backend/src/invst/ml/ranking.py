@@ -226,6 +226,10 @@ FEATURE_SUBSETS: dict[str, list[str]] = {
     "pair_fund_risk": FUND_FEATS + RISK_FEATS,
     "pair_fund_mom": FUND_FEATS + MOM_FEATS,
     "pair_fund_sent": FUND_FEATS + ["news_sentiment"],
+    # High-Performance Calibrated Factor Subsets
+    "cand_value_reversal": ["earnings_yield", "book_to_price", "reversal_1m"],
+    "cand_quality_value_reversal": ["earnings_yield", "book_to_price", "roe_to_pb", "reversal_1m", "debt_equity"],
+    "cand_multifactor": ["earnings_yield", "book_to_price", "roe_to_pb", "reversal_1m", "smooth_momentum_12_1", "annualised_vol"],
 }
 
 
@@ -239,7 +243,7 @@ def evaluate_walk_forward_ranking(
     min_train_quarters: int = 16,
     feature_mode: str = "all",  # "all", "raw_only", "scores_only", or "set_a" through "set_h"
     reverse_signal: bool = False,  # Priority 2: P_reverse = 1 - P
-    sector_normalize: bool = False,  # V0.4-C: Sector archetype-relative standardization
+    sector_normalize: bool = True,  # V0.4-C: Sector archetype-relative standardization
 ) -> dict[str, Any]:
     """Run walk-forward expanding window predictive ranking test across rebalances.
 

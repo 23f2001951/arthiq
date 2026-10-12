@@ -68,9 +68,17 @@ def compute_v04_normalized_arthscore(
     r_pillar = float(scorecard.risk_score)
     h_pillar = float(min(100.0, max(0.0, ml_probability * 100.0)))
 
-    # Cross-Pillar Signal Agreement between Fundamental Quality (F) and ML Momentum (H)
-    divergence = abs(f_pillar - h_pillar) / 100.0
-    agreement_factor = max(0.50, 1.0 - (agreement_alpha * divergence))
+    # Cross-Pillar Signal Agreement between Fundamental Quality (F) and ML Conviction (H)
+    # Normalized active deviation relative to neutral 50.0 center
+    f_active = (f_pillar - 50.0) / 50.0
+    h_active = (h_pillar - 50.0) / 50.0
+
+    # Conflict occurs only when fundamental direction opposes predictive ML direction
+    if (f_active > 0.15 and h_active < -0.15) or (f_active < -0.15 and h_active > 0.15):
+        conflict_magnitude = min(1.0, abs(f_active - h_active) / 2.0)
+        agreement_factor = max(0.50, 1.0 - (agreement_alpha * conflict_magnitude))
+    else:
+        agreement_factor = 1.0
 
     # Additive synthesis
     base_additive = (

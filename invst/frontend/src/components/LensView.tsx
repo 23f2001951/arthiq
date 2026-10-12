@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { StockRecommendationItem } from '../types/api';
+import { FactorRadarChart } from './FactorRadarChart';
 import {
   Eye,
   Search,
@@ -7,7 +8,6 @@ import {
   ShieldCheck,
   BarChart3,
   Flame,
-  CheckCircle2,
   Layers,
 } from 'lucide-react';
 
@@ -38,19 +38,12 @@ export const LensView: React.FC<LensViewProps> = ({ recommendations }) => {
   const formatSector = (s: string) =>
     s ? s.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()) : 'General';
 
-  // Mock simulated return series for Lens stock view (inspired by reference image 2)
-  const getReturns = (sym: string) => {
-    const base = sym.charCodeAt(0) % 5;
-    return {
-      d1: `+${(0.8 + base * 0.2).toFixed(1)}%`,
-      d5: `+${(2.4 + base * 0.5).toFixed(1)}%`,
-      m1: `+${(5.8 + base * 0.9).toFixed(1)}%`,
-      m6: `+${(14.2 + base * 1.8).toFixed(1)}%`,
-      y1: `+${(28.5 + base * 3.1).toFixed(1)}%`,
-    };
-  };
-
-  const returns = currentStock ? getReturns(currentStock.symbol) : getReturns('TCS');
+  const factorProfile = currentStock ? [
+    { axis: 'Quality', score: currentStock.quality_score, description: 'Business quality score' },
+    { axis: 'Valuation', score: currentStock.valuation_score, description: 'Relative valuation score' },
+    { axis: 'Risk', score: currentStock.risk_score, description: 'Risk assessment score' },
+    { axis: 'Composite', score: currentStock.composite_score, description: 'Combined score with overlay' },
+  ] : [];
 
   return (
     <div className="space-y-8 animate-fadeIn">
@@ -158,33 +151,12 @@ export const LensView: React.FC<LensViewProps> = ({ recommendations }) => {
                 </div>
               </div>
 
-              {/* Performance Array (from Reference Image 2) */}
-              <div className="mt-6">
-                <span className="text-[11px] font-mono font-bold text-slate-400 uppercase tracking-wider block mb-2">
-                  Historical Return Spectrum
-                </span>
-                <div className="grid grid-cols-5 gap-2 text-center font-mono text-xs">
-                  <div className="bg-white/[0.02] p-2.5 rounded-xl border border-white/[0.04]">
-                    <span className="text-slate-500 block text-[10px]">1D</span>
-                    <span className="text-emerald-400 font-bold">{returns.d1}</span>
-                  </div>
-                  <div className="bg-white/[0.02] p-2.5 rounded-xl border border-white/[0.04]">
-                    <span className="text-slate-500 block text-[10px]">5D</span>
-                    <span className="text-emerald-400 font-bold">{returns.d5}</span>
-                  </div>
-                  <div className="bg-white/[0.02] p-2.5 rounded-xl border border-white/[0.04]">
-                    <span className="text-slate-500 block text-[10px]">1M</span>
-                    <span className="text-emerald-400 font-bold">{returns.m1}</span>
-                  </div>
-                  <div className="bg-white/[0.02] p-2.5 rounded-xl border border-white/[0.04]">
-                    <span className="text-slate-500 block text-[10px]">6M</span>
-                    <span className="text-emerald-400 font-bold">{returns.m6}</span>
-                  </div>
-                  <div className="bg-white/[0.02] p-2.5 rounded-xl border border-white/[0.04]">
-                    <span className="text-slate-500 block text-[10px]">1Y</span>
-                    <span className="text-emerald-400 font-bold">{returns.y1}</span>
-                  </div>
+              <div className="mt-6 rounded-2xl border border-white/[0.06] bg-black/10 p-4">
+                <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+                  <span className="text-[11px] font-mono font-bold text-slate-300 uppercase tracking-wider">Actual factor profile</span>
+                  <span className="text-[10px] text-slate-500">Scores from the selected point-in-time recommendation</span>
                 </div>
+                <FactorRadarChart data={factorProfile} size={250} />
               </div>
 
               {/* Four Pillar Factor Diagnostics */}
@@ -198,7 +170,7 @@ export const LensView: React.FC<LensViewProps> = ({ recommendations }) => {
                   <div className="text-xl font-mono font-bold text-white">
                     {currentStock.quality_score.toFixed(1)}
                   </div>
-                  <span className="text-[10px] text-slate-500 block mt-1">High ROCE &amp; Zero Debt</span>
+                  <span className="text-[10px] text-slate-500 block mt-1">Quality inputs in this PIT score</span>
                 </div>
 
                 {/* 2. Valuation */}
@@ -210,7 +182,7 @@ export const LensView: React.FC<LensViewProps> = ({ recommendations }) => {
                   <div className="text-xl font-mono font-bold text-white">
                     {currentStock.valuation_score.toFixed(1)}
                   </div>
-                  <span className="text-[10px] text-slate-500 block mt-1">Attractive PE vs 3Y Med</span>
+                  <span className="text-[10px] text-slate-500 block mt-1">Valuation inputs in this PIT score</span>
                 </div>
 
                 {/* 3. Risk */}
@@ -222,7 +194,7 @@ export const LensView: React.FC<LensViewProps> = ({ recommendations }) => {
                   <div className="text-xl font-mono font-bold text-white">
                     {currentStock.risk_score.toFixed(1)}
                   </div>
-                  <span className="text-[10px] text-slate-500 block mt-1">Low Volatility &amp; DD</span>
+                  <span className="text-[10px] text-slate-500 block mt-1">Risk inputs in this PIT score</span>
                 </div>
 
                 {/* 4. Sentiment Overlay */}
@@ -278,23 +250,20 @@ export const LensView: React.FC<LensViewProps> = ({ recommendations }) => {
             {/* Peer Decile Comparison */}
             <div className="glass-card p-6 relative overflow-hidden">
               <span className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider block mb-3">
-                Peer Decile Standing
+                Model Signal Context
               </span>
               <div className="space-y-3 font-mono text-xs">
                 <div className="flex items-center justify-between p-2 rounded-xl bg-white/[0.02]">
-                  <span className="text-slate-400">NSE 500 Percentile</span>
-                  <span className="font-bold text-emerald-400">Top 3%</span>
+                  <span className="text-slate-400">Conviction tier</span>
+                  <span className="font-bold text-emerald-400">{currentStock.alpha_model_available ? currentStock.conviction_tier || 'Not provided' : 'Calibrated model unavailable'}</span>
                 </div>
                 <div className="flex items-center justify-between p-2 rounded-xl bg-white/[0.02]">
-                  <span className="text-slate-400">Sector Rank</span>
-                  <span className="font-bold text-amber-400">#1 in {formatSector(currentStock.sector)}</span>
+                  <span className="text-slate-400">Signal agreement</span>
+                  <span className="font-bold text-amber-400">{currentStock.alpha_model_available && currentStock.signal_agreement !== undefined ? `${(currentStock.signal_agreement * 100).toFixed(0)}%` : '—'}</span>
                 </div>
                 <div className="flex items-center justify-between p-2 rounded-xl bg-white/[0.02]">
-                  <span className="text-slate-400">Point-in-Time Audit</span>
-                  <span className="font-bold text-sky-400 flex items-center">
-                    <CheckCircle2 className="w-3 h-3 mr-1 text-sky-400" />
-                    Verified
-                  </span>
+                  <span className="text-slate-400">Expected alpha</span>
+                  <span className="font-bold text-sky-400">{currentStock.alpha_model_available && currentStock.expected_alpha_pct !== undefined ? `${currentStock.expected_alpha_pct > 0 ? '+' : ''}${currentStock.expected_alpha_pct.toFixed(1)}%` : '—'}</span>
                 </div>
               </div>
             </div>

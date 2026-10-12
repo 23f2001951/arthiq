@@ -59,8 +59,33 @@ class MacroPulseItem(BaseModel):
     is_live: bool = False
 
 
+class MarketMoverItem(BaseModel):
+    symbol: str
+    change_pct: float
+    close: float
+
+
+class SectorMoveItem(BaseModel):
+    sector: str
+    change_pct: float
+
+
+class MarketSnapshotItem(BaseModel):
+    asof_date: str | None = None
+    advancing: int = 0
+    declining: int = 0
+    unchanged: int = 0
+    new_52w_highs: int = 0
+    new_52w_lows: int = 0
+    year_range_symbols: int = 0
+    excluded_extreme_moves: int = 0
+    top_movers: list[MarketMoverItem] = Field(default_factory=list)
+    sector_performance: list[SectorMoveItem] = Field(default_factory=list)
+
+
 class DashboardResponse(BaseModel):
     latest_asof: str | None = None
+    market_data_asof: str | None = None
     target_holdings: int = 8
     max_stock_cap: float = 0.25
     max_sector_cap: float = 0.40
@@ -68,11 +93,15 @@ class DashboardResponse(BaseModel):
     sector_allocations: dict[str, float] = Field(default_factory=dict)
     main_portfolio: MainPortfolioStatus | None = None
     macro_pulse: MacroPulseItem | None = None
+    market_snapshot: MarketSnapshotItem | None = None
 
 
 class StockRecommendationItem(BaseModel):
     symbol: str
     sector: str
+    latest_close: float | None = None
+    one_year_return_pct: float | None = None
+    price_trend: list[float] = []
     action: str = "BUY"
     target_weight: float
     current_weight: float = 0.0
@@ -87,6 +116,7 @@ class StockRecommendationItem(BaseModel):
     arth_score: float = 50.0
     signal_agreement: float = 1.0
     conviction_tier: str = "SOLID OUTPERFORMER"
+    alpha_model_available: bool = False
     quality_metrics: dict[str, Any] = Field(default_factory=dict)
     valuation_metrics: dict[str, Any] = Field(default_factory=dict)
     risk_metrics: dict[str, Any] = Field(default_factory=dict)
@@ -116,6 +146,7 @@ class QuickPickItem(BaseModel):
     arth_score: float = 50.0
     signal_agreement: float = 1.0
     conviction_tier: str = "HIGH CONVICTION ALPHA"
+    alpha_model_available: bool = False
     model_name: str = "Calibrated Fund+Momentum Booster (Candidate 2)"
     horizon_days: int = 90
     multi_horizon_projections: dict[str, float] = Field(default_factory=dict)
@@ -442,6 +473,8 @@ class MarketTickerItem(BaseModel):
     category: str = "EQUITY"
     raw_symbol: str = ""
     last_updated: str = ""
+    is_live: bool = False
+    price_source: str = "daily_close"
 
 
 class MacroPulseResponse(BaseModel):

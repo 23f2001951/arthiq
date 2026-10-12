@@ -1,186 +1,55 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { ArrowUpDown, ArrowUpRight, ChevronUp, Eye } from 'lucide-react';
 import { StockRecommendationItem } from '../types/api';
-import { ArrowUpDown, Sparkles } from 'lucide-react';
+import { TrendSparkline } from './TrendSparkline';
 
-interface FactorMatrixViewProps {
-  stocks: StockRecommendationItem[];
-}
+interface FactorMatrixViewProps { stocks: StockRecommendationItem[]; onAnalyze?: (symbol: string) => void; }
+type SortField = 'score' | 'price' | 'return' | 'quality' | 'valuation';
+type VerdictFilter = 'ALL' | 'INVEST' | 'WAIT' | 'REJECT';
 
-export const FactorMatrixView: React.FC<FactorMatrixViewProps> = ({ stocks }) => {
-  const [sortField, setSortField] = useState<'arth' | 'prob' | 'composite' | 'quality' | 'valuation' | 'risk'>('arth');
+const verdictFor = (action: string) => {
+  const normalized = action.toUpperCase();
+  if (normalized === 'BUY' || normalized === 'INVEST') return 'INVEST';
+  if (normalized === 'HOLD' || normalized === 'WAIT') return 'WAIT';
+  return 'REJECT';
+};
+const money = (value?: number | null) => value == null ? '—' : `₹${value.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
-  const sortedStocks = [...stocks].sort((a, b) => {
-    if (sortField === 'arth') return (b.arth_score ?? b.composite_score * 100) - (a.arth_score ?? a.composite_score * 100);
-    if (sortField === 'prob') return (b.p_outperform ?? 0.5) - (a.p_outperform ?? 0.5);
+export const FactorMatrixView: React.FC<FactorMatrixViewProps> = ({ stocks, onAnalyze }) => {
+  const [sortField, setSortField] = useState<SortField>('score');
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [verdictFilter, setVerdictFilter] = useState<VerdictFilter>('ALL');
+  const sortedStocks = useMemo(() => [...stocks].sort((a, b) => {
     if (sortField === 'quality') return b.quality_score - a.quality_score;
     if (sortField === 'valuation') return b.valuation_score - a.valuation_score;
-    if (sortField === 'risk') return b.risk_score - a.risk_score;
-    return b.composite_score - a.composite_score;
-  });
+    if (sortField === 'price') return (b.latest_close ?? -Infinity) - (a.latest_close ?? -Infinity);
+    if (sortField === 'return') return (b.one_year_return_pct ?? -Infinity) - (a.one_year_return_pct ?? -Infinity);
+    return (b.arth_score ?? b.composite_score * 100) - (a.arth_score ?? a.composite_score * 100);
+  }), [stocks, sortField]);
+  const visibleStocks = sortedStocks.filter((stock) => verdictFilter === 'ALL' || verdictFor(stock.action) === verdictFilter);
 
-  return (
-    <div className="glass-card rounded-3xl overflow-hidden shadow-2xl border border-white/[0.08]">
-      {/* Header Bar */}
-      <div className="p-5 border-b border-white/[0.06] flex flex-wrap items-center justify-between gap-3 bg-[#07090f]/70">
-        <div>
-          <h3 className="text-sm font-black uppercase tracking-wider text-white flex items-center">
-            <Sparkles className="w-4 h-4 mr-2 text-sky-400" />
-            Cross-Sectional Factor & Alpha Comparison Matrix
-          </h3>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Institutional ArthScores, calibrated outperformance probabilities, and factor percentiles
-          </p>
-        </div>
-
-        {/* Quick Sort Tabs with Arth IQ Active State */}
-        <div className="flex items-center space-x-1.5 text-xs bg-[#05070d] p-1.5 rounded-2xl border border-white/[0.08]">
-          <span className="text-slate-500 px-2 py-0.5 flex items-center font-mono text-[11px]">
-            <ArrowUpDown className="w-3 h-3 mr-1 text-sky-400" /> Sort:
-          </span>
-          {(['arth', 'prob', 'composite', 'quality', 'valuation', 'risk'] as const).map((field) => (
-            <button
-              key={field}
-              onClick={() => setSortField(field)}
-              className={`px-3 py-1 rounded-xl capitalize font-bold transition-all text-xs ${
-                sortField === field
-                  ? 'bg-gradient-to-r from-winsor-600 to-sky-500 text-white shadow-md shadow-winsor-500/25 font-black'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              {field === 'arth' ? 'ArthScore' : field === 'prob' ? 'P(Alpha)' : field}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Table Content */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs">
-          <thead className="bg-[#080b13] text-slate-400 font-bold uppercase tracking-wider border-b border-white/[0.06]">
-            <tr>
-              <th className="py-3.5 px-4">Rank & Symbol</th>
-              <th className="py-3.5 px-4">Sector</th>
-              <th className="py-3.5 px-4 text-center">ArthScore</th>
-              <th className="py-3.5 px-4 text-center">P(Alpha &gt; 0)</th>
-              <th className="py-3.5 px-4 w-40">Quality (40%)</th>
-              <th className="py-3.5 px-4 w-40">Valuation (30%)</th>
-              <th className="py-3.5 px-4 w-40">Risk (30%)</th>
-              <th className="py-3.5 px-4 text-right">Target Weight</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-white/[0.04] font-medium text-slate-200">
-            {sortedStocks.map((stock, idx) => {
-              const qPct = stock.quality_score * 100;
-              const vPct = stock.valuation_score * 100;
-              const rPct = stock.risk_score * 100;
-              const cPct = stock.composite_score * 100;
-
-              return (
-                <tr
-                  key={stock.symbol}
-                  className="hover:bg-winsor-950/20 transition-colors group"
-                >
-                  {/* Rank & Symbol */}
-                  <td className="py-3.5 px-4 font-mono">
-                    <div className="flex items-center space-x-2.5">
-                      <span className="w-6 h-6 rounded-lg bg-[#0c101a] border border-white/[0.08] text-sky-300 font-bold flex items-center justify-center text-xs">
-                        {idx + 1}
-                      </span>
-                      <span className="font-black text-sm text-white group-hover:text-sky-300 transition-colors">
-                        {stock.symbol}
-                      </span>
-                    </div>
-                  </td>
-
-                  {/* Sector */}
-                  <td className="py-3.5 px-4 capitalize text-slate-400">
-                    {stock.sector.replace(/_/g, ' ')}
-                  </td>
-
-                  {/* ArthScore */}
-                  <td className="py-3.5 px-4 text-center font-mono font-black">
-                    <span className="px-2.5 py-1 rounded-lg bg-[#0e1322] text-sky-300 border border-sky-500/30 text-xs shadow-sm">
-                      {(stock.arth_score ?? cPct).toFixed(1)}
-                    </span>
-                  </td>
-
-                  {/* P(Alpha > 0) Probability */}
-                  <td className="py-3.5 px-4 text-center font-mono font-black">
-                    <span className={`px-2 py-0.5 rounded-lg text-xs border ${
-                      (stock.p_outperform ?? 0.5) >= 0.70
-                        ? 'bg-emerald-950/70 text-emerald-300 border-emerald-500/40'
-                        : (stock.p_outperform ?? 0.5) >= 0.55
-                        ? 'bg-sky-950/70 text-sky-300 border-sky-500/40'
-                        : 'bg-[#090d16] text-slate-400 border-white/[0.08]'
-                    }`}>
-                      {Math.round((stock.p_outperform ?? 0.5) * 100)}%
-                    </span>
-                  </td>
-
-                  {/* Quality Bar */}
-                  <td className="py-3.5 px-4">
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-[11px] font-mono">
-                        <span className="text-emerald-400 font-bold">{qPct.toFixed(1)}</span>
-                        <span className="text-slate-500">
-                          ROCE: {stock.quality_metrics?.roce !== undefined && stock.quality_metrics.roce !== null ? `${stock.quality_metrics.roce.toFixed(1)}%` : '—'}
-                        </span>
-                      </div>
-                      <div className="w-full h-1.5 bg-[#05070d] rounded-full overflow-hidden border border-white/[0.06]">
-                        <div
-                          className="h-full rounded-full bg-gradient-to-r from-emerald-600 to-teal-400"
-                          style={{ width: `${Math.min(100, Math.max(5, qPct))}%` }}
-                        />
-                      </div>
-                    </div>
-                  </td>
-
-                  {/* Valuation Bar */}
-                  <td className="py-3.5 px-4">
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-[11px] font-mono">
-                        <span className="text-sky-400 font-bold">{vPct.toFixed(1)}</span>
-                        <span className="text-slate-500">
-                          P/E: {stock.valuation_metrics?.pe_ratio !== undefined && stock.valuation_metrics.pe_ratio !== null ? stock.valuation_metrics.pe_ratio.toFixed(1) : '—'}
-                        </span>
-                      </div>
-                      <div className="w-full h-1.5 bg-[#05070d] rounded-full overflow-hidden border border-white/[0.06]">
-                        <div
-                          className="h-full rounded-full bg-gradient-to-r from-winsor-600 to-sky-400"
-                          style={{ width: `${Math.min(100, Math.max(5, vPct))}%` }}
-                        />
-                      </div>
-                    </div>
-                  </td>
-
-                  {/* Risk Bar */}
-                  <td className="py-3.5 px-4">
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-[11px] font-mono">
-                        <span className="text-indigo-400 font-bold">{rPct.toFixed(1)}</span>
-                        <span className="text-slate-500">
-                          D/E: {stock.risk_metrics?.debt_to_equity !== undefined && stock.risk_metrics.debt_to_equity !== null ? stock.risk_metrics.debt_to_equity.toFixed(2) : '—'}
-                        </span>
-                      </div>
-                      <div className="w-full h-1.5 bg-[#05070d] rounded-full overflow-hidden border border-white/[0.06]">
-                        <div
-                          className="h-full rounded-full bg-gradient-to-r from-indigo-600 to-purple-400"
-                          style={{ width: `${Math.min(100, Math.max(5, rPct))}%` }}
-                        />
-                      </div>
-                    </div>
-                  </td>
-
-                  {/* Target Weight */}
-                  <td className="py-3.5 px-4 text-right font-mono font-black text-emerald-400 text-sm">
-                    {(stock.target_weight * 100).toFixed(2)}%
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+  return <section className="ideas-table-panel">
+    <div className="ideas-table-panel__header"><div><span className="market-section-kicker">POINT-IN-TIME RESEARCH</span><h2>Investment ideas</h2><p>Current price and one-year return are calculated from stored closes available at the selected date.</p></div>
+      <label className="ideas-table-panel__sort"><ArrowUpDown size={14}/><span>Sort</span><select aria-label="Sort investment ideas" value={sortField} onChange={(event) => setSortField(event.target.value as SortField)}><option value="score">Arth IQ score</option><option value="return">1Y return</option><option value="price">Latest close</option><option value="quality">Quality</option><option value="valuation">Valuation</option></select></label>
     </div>
-  );
+    <div className="ideas-table-panel__filters">{(['ALL', 'INVEST', 'WAIT', 'REJECT'] as const).map((filter) => <button type="button" key={filter} onClick={() => setVerdictFilter(filter)} className={verdictFilter === filter ? 'is-active' : ''}>{filter === 'ALL' ? 'All ideas' : filter[0] + filter.slice(1).toLowerCase()} <b>{filter === 'ALL' ? stocks.length : stocks.filter((stock) => verdictFor(stock.action) === filter).length}</b></button>)}</div>
+    <div className="ideas-table-panel__scroll"><table className="ideas-table"><thead><tr><th>Company</th><th className="is-center">Arth IQ score</th><th>Verdict</th><th>Key reasons</th><th className="is-right">Latest close</th><th className="is-right">1Y return</th><th>30D trend</th><th className="is-right">Actions</th></tr></thead><tbody>
+      {visibleStocks.map((stock) => {
+        const score = stock.arth_score ?? stock.composite_score * 100;
+        const verdict = verdictFor(stock.action);
+        const isExpanded = expanded === stock.symbol;
+        return <React.Fragment key={stock.symbol}><tr className="ideas-table__row">
+          <td><strong>{stock.symbol}</strong><small>{stock.sector.replace(/_/g, ' ')}</small></td>
+          <td className="is-center"><span className={`ideas-score ${score >= 75 ? 'is-high' : score < 50 ? 'is-low' : ''}`}>{score.toFixed(0)}</span></td>
+          <td><span className={`ideas-verdict is-${verdict.toLowerCase()}`}>{verdict}</span>{stock.alpha_model_available && stock.p_outperform != null && <small className="ideas-table__confidence">{Math.round(stock.p_outperform * 100)}% model probability</small>}</td>
+          <td><p className="ideas-table__reason" title={stock.rationale}>{stock.rationale || 'No rationale supplied.'}</p></td>
+          <td className="is-right ideas-table__number">{money(stock.latest_close)}</td>
+          <td className={`is-right ideas-table__number ${stock.one_year_return_pct == null ? '' : stock.one_year_return_pct >= 0 ? 'is-positive' : 'is-negative'}`}>{stock.one_year_return_pct == null ? '—' : `${stock.one_year_return_pct >= 0 ? '+' : ''}${stock.one_year_return_pct.toFixed(1)}%`}</td>
+          <td><TrendSparkline data={stock.price_trend} width={76} height={26} color={(stock.price_trend?.[Math.max(0, (stock.price_trend?.length ?? 1) - 1)] ?? 0) >= (stock.price_trend?.[0] ?? 0) ? 'emerald' : 'rose'} /></td>
+          <td className="is-right"><span className="ideas-table__actions"><button className="ideas-table__detail-button" onClick={() => setExpanded(isExpanded ? null : stock.symbol)} aria-label={`${isExpanded ? 'Hide' : 'Show'} ${stock.symbol} factor detail`}>{isExpanded ? <ChevronUp size={15}/> : <Eye size={15}/>}</button>{onAnalyze && <button className="ideas-table__detail-button" onClick={() => onAnalyze(stock.symbol)} aria-label={`Open ${stock.symbol} in stock analyzer`}><ArrowUpRight size={15}/></button>}</span></td>
+        </tr>{isExpanded && <tr className="ideas-table__expanded"><td colSpan={8}><div className="ideas-factor-bars">{[['Business quality', stock.quality_score], ['Valuation', stock.valuation_score], ['Risk', stock.risk_score]].map(([label, scoreValue]) => <div key={String(label)}><span>{label}</span><div><i style={{ width: `${Math.max(0, Math.min(100, Number(scoreValue) * 100))}%` }}/></div><strong>{(Number(scoreValue) * 100).toFixed(0)}</strong></div>)}</div><p>{stock.rationale}</p></td></tr>}</React.Fragment>;
+      })}
+    </tbody></table></div>
+    {visibleStocks.length === 0 && <div className="ideas-table-panel__empty">No recommendations match this point-in-time selection.</div>}
+  </section>;
 };

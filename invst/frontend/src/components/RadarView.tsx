@@ -1,9 +1,15 @@
 import React, { useState } from 'react';
 import { PulseView } from './PulseView';
 import { EdgeView } from './EdgeView';
-import { Zap, Activity, Radio } from 'lucide-react';
+import { StockRecommendationItem } from '../types/api';
+import { BarChart3, Radio } from 'lucide-react';
 
-export const RadarView: React.FC = () => {
+interface RadarViewProps {
+  recommendations: StockRecommendationItem[];
+  asof: string;
+}
+
+export const RadarView: React.FC<RadarViewProps> = ({ recommendations, asof }) => {
   const [subMode, setSubMode] = useState<'signals' | 'themes'>('signals');
 
   return (
@@ -19,7 +25,7 @@ export const RadarView: React.FC = () => {
               Market Radar &amp; Signal Engine
             </h2>
             <p className="text-xs text-slate-400 font-mono">
-              Live corporate disclosures, breakout volume, and structural growth baskets
+              Point-in-time disclosures and rankings from the selected model run
             </p>
           </div>
         </div>
@@ -33,8 +39,8 @@ export const RadarView: React.FC = () => {
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            <Zap className="w-3.5 h-3.5" />
-            <span>Verified Signals (Edge)</span>
+                <Radio className="w-3.5 h-3.5" />
+                <span>Corporate Events</span>
           </button>
           <button
             onClick={() => setSubMode('themes')}
@@ -44,14 +50,14 @@ export const RadarView: React.FC = () => {
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            <Activity className="w-3.5 h-3.5" />
-            <span>Thematic Baskets (Pulse)</span>
+            <BarChart3 className="w-3.5 h-3.5" />
+            <span>Factor Leaders</span>
           </button>
         </div>
       </div>
 
       {/* Render selected view */}
-      {subMode === 'signals' ? <EdgeView /> : <PulseView />}
+      {subMode === 'signals' ? <EdgeView asof={asof} /> : <PulseView recommendations={recommendations} asof={asof} />}
     </div>
   );
 };

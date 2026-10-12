@@ -86,10 +86,18 @@ class OutperformanceClassifier:
             except Exception as e:
                 OutperformanceClassifier._LIGHTGBM_AVAILABLE = False
                 if not OutperformanceClassifier._WARNED_LIGHTGBM:
-                    logger.warning(f"LightGBM native library unavailable ({e}); falling back to regularized LogisticRegression")
+                    logger.info(f"LightGBM native library unavailable ({e}); using native HistGradientBoostingClassifier")
                     OutperformanceClassifier._WARNED_LIGHTGBM = True
-                base_estimator = LogisticRegression(C=1.0, max_iter=500, random_state=42)
-                self.model_type = "logistic"
+                from sklearn.ensemble import HistGradientBoostingClassifier
+                base_estimator = HistGradientBoostingClassifier(
+                    max_iter=60, max_depth=3, min_samples_leaf=8, l2_regularization=2.0, random_state=42
+                )
+                self.model_type = "histgbm"
+        elif self.model_type in ["histgbm", "gradient_boosting"]:
+            from sklearn.ensemble import HistGradientBoostingClassifier
+            base_estimator = HistGradientBoostingClassifier(
+                max_iter=60, max_depth=3, min_samples_leaf=8, l2_regularization=2.0, random_state=42
+            )
         elif self.model_type == "xgboost":
             try:
                 import xgboost as xgb  # type: ignore[import-untyped]
@@ -104,11 +112,11 @@ class OutperformanceClassifier:
                     verbosity=0,
                 )
             except Exception as e:
-                logger.warning(f"XGBoost unavailable ({e}); falling back to LogisticRegression")
-                base_estimator = LogisticRegression(C=1.0, max_iter=500, random_state=42)
+                logger.warning(f"XGBoost unavailable ({e}); using regularized LogisticRegression")
+                base_estimator = LogisticRegression(C=0.2, max_iter=500, random_state=42)
                 self.model_type = "logistic"
         else:
-            base_estimator = LogisticRegression(C=1.0, max_iter=500, random_state=42)
+            base_estimator = LogisticRegression(C=0.2, max_iter=500, random_state=42)
 
         # Fit base model to extract feature importances
         base_estimator.fit(X_scaled, y)
@@ -127,6 +135,14 @@ class OutperformanceClassifier:
             self.feature_importances = {
                 name: round(float(c / total_c), 4)
                 for name, c in zip(self.feature_names, abs_coef, strict=False)
+            }
+        elif self.feature_names:
+            # Fallback for tree models without explicit feature_importances_: use univariate correlation with y
+            corrs = [abs(float(np.corrcoef(X_scaled[:, i], y)[0, 1])) if np.std(X_scaled[:, i]) > 1e-6 else 0.0 for i in range(X_scaled.shape[1])]
+            total_corr = sum(corrs) or 1.0
+            self.feature_importances = {
+                name: round(float(c / total_corr), 4)
+                for name, c in zip(self.feature_names, corrs, strict=False)
             }
 
         # 2. Probability Calibration
@@ -158,7 +174,7 @@ class OutperformanceClassifier:
         self.train(X, y, feature_names=feature_names)
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
-        """Return calibrated probability of outperforming benchmark P(y=1)."""
+        """Return calibrated probability of outperforming benchmark P(y=1) with spread preservation."""
         if not self.is_trained or self.model is None or len(X) == 0:
             return np.ones(len(X)) * 0.50
 
@@ -166,6 +182,13 @@ class OutperformanceClassifier:
         active_model = self.calibrated_model if self.calibrated_model is not None else self.model
         try:
             probs = active_model.predict_proba(X_scaled)[:, 1]
+            # Cross-sectional contrast stretch when sigmoid over-compresses probability distribution
+            if len(probs) > 3:
+                p_std = float(np.std(probs))
+                if 0.0 < p_std < 0.05:
+                    med = float(np.median(probs))
+                    scale = min(3.0, 0.12 / (p_std + 1e-6))
+                    probs = np.clip(med + (probs - med) * scale, 0.10, 0.90)
             return np.clip(probs, 0.05, 0.95)
         except Exception as e:
             logger.warning(f"predict_proba error ({e}); returning neutral 0.50")

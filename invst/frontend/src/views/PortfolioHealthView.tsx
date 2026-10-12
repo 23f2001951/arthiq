@@ -41,6 +41,50 @@ import {
   PortfolioDetail,
 } from '../types/api';
 
+const allocationPalette = ['#536b4b', '#b08b43', '#688895', '#9b786e', '#7c7393', '#87916d', '#b87853', '#6d7f75'];
+
+const PortfolioAllocation: React.FC<{ report: PortfolioHealthResponse }> = ({ report }) => {
+  const holdings = report.positions.map((position) => ({ ...position, value: Math.max(0, position.current_value) }))
+    .filter((position) => position.value > 0).sort((a, b) => b.value - a.value);
+  const invested = holdings.reduce((total, holding) => total + holding.value, 0);
+  const sectors = Object.entries(report.sector_exposures || {}).filter(([, weight]) => weight > 0).sort((a, b) => b[1] - a[1]);
+  let offset = 0;
+  const slices = holdings.map((holding, index) => {
+    const share = invested ? holding.value / invested : 0;
+    const slice = { ...holding, share, offset, color: allocationPalette[index % allocationPalette.length] };
+    offset += share;
+    return slice;
+  });
+  return <section id="portfolio-allocation" className="portfolio-allocation portfolio-lab-section">
+    <div className="portfolio-allocation__heading"><div><span className="portfolio-section-kicker">PORTFOLIO COMPOSITION</span><h2>Allocation at a glance</h2><p>Weights use current holding values from your latest portfolio analysis.</p></div><span className="portfolio-asof">As of {report.asof_date}</span></div>
+    <div className="portfolio-allocation__grid">
+      <article className="portfolio-allocation__card">
+        <div className="portfolio-allocation__card-head"><div><h3>Asset allocation</h3><p>By holding · current market value</p></div><strong>₹{invested.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</strong></div>
+        {slices.length ? <div className="portfolio-allocation__donut-layout"><div className="portfolio-allocation__donut" role="img" aria-label={`Portfolio allocation across ${slices.length} holdings`}>
+          <svg viewBox="0 0 160 160" aria-hidden="true"><circle cx="80" cy="80" r="62" fill="none" stroke="var(--line)" strokeWidth="19" />{slices.map((slice) => <circle key={slice.symbol} cx="80" cy="80" r="62" fill="none" stroke={slice.color} strokeWidth="19" strokeDasharray={`${slice.share * 389.56} 389.56`} strokeDashoffset={-slice.offset * 389.56} transform="rotate(-90 80 80)" />)}</svg><div className="portfolio-allocation__donut-center"><strong>{slices.length}</strong><span>holdings</span></div></div>
+          <div className="portfolio-allocation__legend">{slices.slice(0, 7).map((slice) => <div key={slice.symbol}><span className="portfolio-allocation__dot" style={{ background: slice.color }} /><span className="portfolio-allocation__symbol">{slice.symbol}</span><strong>{(slice.share * 100).toFixed(1)}%</strong></div>)}{slices.length > 7 && <small>+ {slices.length - 7} more holdings</small>}</div></div> : <p className="portfolio-allocation__empty">Add holdings to see your allocation.</p>}
+      </article>
+      <article className="portfolio-allocation__card">
+        <div className="portfolio-allocation__card-head"><div><h3>Sector allocation</h3><p>Exposure by sector · portfolio weights</p></div><span className="portfolio-allocation__tag">{sectors.length} sectors</span></div>
+        {sectors.length ? <div className="portfolio-allocation__sectors">{sectors.slice(0, 8).map(([sector, weight], index) => <div key={sector} className="portfolio-allocation__sector"><div><span>{sector}</span><strong>{weight.toFixed(1)}%</strong></div><div className="portfolio-allocation__track"><i style={{ width: `${Math.max(1, Math.min(100, weight))}%`, background: allocationPalette[index % allocationPalette.length] }} /></div></div>)}</div> : <p className="portfolio-allocation__empty">Sector weights are unavailable for this portfolio.</p>}
+      </article>
+    </div>
+  </section>;
+};
+
+const PortfolioPerformanceSummary: React.FC<{ report: PortfolioHealthResponse }> = ({ report }) => {
+  const ceiling = Math.max(report.total_current_value, report.total_invested, 1);
+  const investedWidth = Math.max(0, Math.min(100, (report.total_invested / ceiling) * 100));
+  const currentWidth = Math.max(0, Math.min(100, (report.total_current_value / ceiling) * 100));
+  const money = (value: number) => `₹${Math.abs(value).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+  return <section id="portfolio-performance" className="portfolio-performance portfolio-lab-section">
+    <div><span className="portfolio-section-kicker">REALIZED FROM CURRENT HOLDINGS</span><h2>Portfolio performance</h2><p>Snapshot as of {report.asof_date} · return is measured against saved average buy prices.</p></div>
+    <div className="portfolio-performance__summary"><div><span>Current value</span><strong>{money(report.total_current_value)}</strong></div><div><span>Unrealized return</span><strong className={report.total_unrealized_pnl >= 0 ? 'is-positive' : 'is-negative'}>{report.total_unrealized_pnl >= 0 ? '+' : '−'}{money(report.total_unrealized_pnl)} <small>({report.total_unrealized_pnl_pct >= 0 ? '+' : ''}{report.total_unrealized_pnl_pct.toFixed(2)}%)</small></strong></div></div>
+    <div className="portfolio-performance__bars"><div><span>Invested cost</span><div><i style={{ width: `${investedWidth}%` }} /></div><strong>{money(report.total_invested)}</strong></div><div><span>Current market value</span><div><i className="is-current" style={{ width: `${currentWidth}%` }} /></div><strong>{money(report.total_current_value)}</strong></div></div>
+    <p className="portfolio-performance__note">A dated return curve isn’t available because the portfolio doesn’t store historical holdings snapshots or trade dates. The comparison above uses current prices and saved cost basis only.</p>
+  </section>;
+};
+
 export const PortfolioHealthView: React.FC = () => {
   // Multi-Portfolio & Target List state
   const [portfolios, setPortfolios] = useState<PortfolioSummary[]>([]);
@@ -55,6 +99,7 @@ export const PortfolioHealthView: React.FC = () => {
   const [createError, setCreateError] = useState<string | null>(null);
 
   const [holdings, setHoldings] = useState<UserHoldingItem[]>([]);
+  const [isDemoHoldings, setIsDemoHoldings] = useState(false);
   const [newSymbol, setNewSymbol] = useState('');
   const [newShares, setNewShares] = useState('');
   const [newPrice, setNewPrice] = useState('');
@@ -92,6 +137,7 @@ export const PortfolioHealthView: React.FC = () => {
   const loadSpecificPortfolio = async (portId: string) => {
     try {
       const detail = await fetchPortfolio(portId);
+      setIsDemoHoldings(false);
       setActivePortfolioDetail(detail);
       const hList = detail?.holdings || [];
       setHoldings(hList);
@@ -159,13 +205,16 @@ export const PortfolioHealthView: React.FC = () => {
     try {
       const saved = await fetchPortfolioHoldings();
       if (saved && saved.length > 0) {
+        setIsDemoHoldings(false);
         setHoldings(saved);
         await runDiagnosis(saved);
       } else {
+        setIsDemoHoldings(false);
         setHoldings([]);
         setReport(null);
       }
     } catch {
+      setIsDemoHoldings(false);
       setHoldings([]);
       setReport(null);
     }
@@ -180,6 +229,7 @@ export const PortfolioHealthView: React.FC = () => {
       { symbol: 'NIFTYBEES', shares: 100, buy_price: 260 },
     ];
     setHoldings(demo);
+    setIsDemoHoldings(true);
     runDiagnosis(demo);
   };
 
@@ -222,6 +272,7 @@ export const PortfolioHealthView: React.FC = () => {
 
     const updated = [...holdings.filter((h) => h.symbol !== sym), newHolding];
     setHoldings(updated);
+    setIsDemoHoldings(false);
     setNewSymbol('');
     setNewShares('');
     setNewPrice('');
@@ -239,6 +290,7 @@ export const PortfolioHealthView: React.FC = () => {
   const handleRemovePosition = async (sym: string) => {
     const updated = holdings.filter((h) => h.symbol !== sym);
     setHoldings(updated);
+    setIsDemoHoldings(false);
     runDiagnosis(updated);
     try {
       await savePortfolioHoldings(updated, selectedPortfolioId);
@@ -251,6 +303,7 @@ export const PortfolioHealthView: React.FC = () => {
     if (holdings.some((h) => h.symbol === sym)) return;
     const updated = [...holdings, { symbol: sym, shares: 10, buy_price: 1000 }];
     setHoldings(updated);
+    setIsDemoHoldings(false);
     runDiagnosis(updated);
     try {
       await savePortfolioHoldings(updated, selectedPortfolioId);
@@ -260,9 +313,11 @@ export const PortfolioHealthView: React.FC = () => {
   };
 
   const handleSaveHoldings = async () => {
+    if (isDemoHoldings && !window.confirm('These example positions will be saved to your actual portfolio. Continue?')) return;
     setSaving(true);
     try {
       await savePortfolioHoldings(holdings, selectedPortfolioId);
+      setIsDemoHoldings(false);
       await runDiagnosis(holdings);
       const list = await fetchPortfolios('PORTFOLIO');
       setPortfolios(list.filter((p) => p.portfolio_type === 'PORTFOLIO'));
@@ -318,6 +373,7 @@ export const PortfolioHealthView: React.FC = () => {
 
         if (parsed.length > 0) {
           setHoldings(parsed);
+          setIsDemoHoldings(false);
           setError(null);
           runDiagnosis(parsed);
           await savePortfolioHoldings(parsed, selectedPortfolioId);
@@ -346,14 +402,14 @@ export const PortfolioHealthView: React.FC = () => {
           <div className="flex items-center space-x-2">
             <h1 className="text-2xl font-black tracking-tight text-white flex items-center gap-2">
               <Briefcase className="w-6 h-6 text-sky-400" />
-              Portfolio Health & Tactical Rebalancer
+              Portfolio Lab
             </h1>
             <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20 font-bold uppercase tracking-wider">
               INSTITUTIONAL GRADE
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            Real-time factor health audit • Multi-horizon wealth projections • Concrete share rebalancing & dip accumulation limits
+            Analyze returns, holdings, asset allocation, sector exposure, and portfolio risk.
           </p>
         </div>
 
@@ -393,6 +449,12 @@ export const PortfolioHealthView: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {isDemoHoldings && (
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-950/20 px-4 py-3 text-xs text-amber-100" role="status">
+          <strong className="font-semibold">Demo positions loaded.</strong> Quantities and purchase prices are illustrative. They are not saved unless you confirm using Save Holdings.
+        </div>
+      )}
 
       {/* 2. Portfolio Switcher */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-3xl bg-[#090d19] border border-white/[0.08] shadow-xl">
@@ -457,6 +519,19 @@ export const PortfolioHealthView: React.FC = () => {
         </div>
       </div>
 
+      <nav className="portfolio-lab-tabs" aria-label="Portfolio Lab sections">
+        {[
+          ['portfolio-overview', 'Overview'],
+          ['portfolio-holdings', 'Holdings'],
+          ['portfolio-performance', 'Performance'],
+          ['portfolio-allocation', 'Allocation'],
+          ['portfolio-risk', 'Risk analysis'],
+          ['portfolio-optimization', 'Optimization'],
+        ].map(([target, label], index) => (
+          <a key={`${target}-${label}`} href={`#${target}`} className={index === 0 ? 'is-current' : ''}>{label}</a>
+        ))}
+      </nav>
+
       {error && (
         <div className="p-4 rounded-2xl bg-rose-950/40 border border-rose-500/30 text-rose-300 text-sm flex items-center gap-2">
           <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
@@ -473,7 +548,7 @@ export const PortfolioHealthView: React.FC = () => {
 
       {/* 2. Top KPI Scorecards Bento */}
       {report && !loading && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div id="portfolio-overview" className="portfolio-lab-section grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="p-5 rounded-3xl bg-[#090d19] border border-white/[0.08] space-y-1 shadow-lg relative overflow-hidden">
             <div className="absolute top-0 right-0 w-24 h-24 bg-sky-500/5 rounded-full blur-2xl pointer-events-none" />
             <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -554,9 +629,12 @@ export const PortfolioHealthView: React.FC = () => {
         </div>
       )}
 
+      {report && !loading && <PortfolioAllocation report={report} />}
+      {report && !loading && <PortfolioPerformanceSummary report={report} />}
+
       {/* 3. Multi-Horizon Portfolio Aggregate Forecast Bento */}
       {report?.portfolio_horizons && Object.keys(report.portfolio_horizons).length > 0 && (
-        <div className="p-6 rounded-3xl bg-[#090d19] border border-white/[0.08] shadow-xl space-y-4">
+        <div className="portfolio-lab-section p-6 rounded-3xl bg-[#090d19] border border-white/[0.08] shadow-xl space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/[0.06] pb-4">
             <div>
               <h2 className="text-base font-bold text-white flex items-center gap-2">
@@ -627,7 +705,7 @@ export const PortfolioHealthView: React.FC = () => {
 
       {/* 4. Factor Health Explanations & Institutional Tiers */}
       {report?.factor_health && Object.keys(report.factor_health).length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div id="portfolio-risk" className="portfolio-lab-section grid grid-cols-1 md:grid-cols-3 gap-4">
           {report.factor_health.business_quality && (
             <div className="p-5 rounded-3xl bg-[#090d19] border border-white/[0.08] shadow-lg space-y-3">
               <div className="flex items-center justify-between">
@@ -725,7 +803,7 @@ export const PortfolioHealthView: React.FC = () => {
 
       {/* 6. Capital Rebalancing Blueprint */}
       {report?.rebalancing_blueprint && report.rebalancing_blueprint.orders.length > 0 && (
-        <div className="p-6 rounded-3xl bg-[#090d19] border border-amber-500/30 space-y-4 shadow-xl relative overflow-hidden">
+        <div id="portfolio-optimization" className="portfolio-lab-section p-6 rounded-3xl bg-[#090d19] border border-amber-500/30 space-y-4 shadow-xl relative overflow-hidden">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/[0.06] pb-4">
             <div>
               <div className="flex items-center gap-2">
@@ -817,12 +895,12 @@ export const PortfolioHealthView: React.FC = () => {
 
       {/* 7. Enhanced Positions Blotter */}
       {report?.positions && report.positions.length > 0 && (
-        <div className="p-6 rounded-3xl bg-[#090d19] border border-white/[0.08] space-y-4 shadow-xl">
+        <div id="portfolio-holdings" className="portfolio-lab-section p-6 rounded-3xl bg-[#090d19] border border-white/[0.08] space-y-4 shadow-xl">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/[0.06] pb-4">
             <div>
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-amber-400" />
-                Position-by-Position Tactical Advisory
+                Holdings
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
                 Summary Action: <span className="text-slate-200 font-mono font-semibold">{report.summary_action_plan}</span>
@@ -854,13 +932,10 @@ export const PortfolioHealthView: React.FC = () => {
                   <th className="py-3 px-3">Symbol</th>
                   <th className="py-3 px-3">Shares</th>
                   <th className="py-3 px-3">Avg Cost</th>
-                  <th className="py-3 px-3">CMP / Price (₹)</th>
-                  <th className="py-3 px-3">Market Value</th>
-                  <th className="py-3 px-3">Weight (Target)</th>
-                  <th className="py-3 px-3">P&L %</th>
-                  <th className="py-3 px-3">Tactical Action</th>
-                  <th className="py-3 px-3">Dip Buy Zone</th>
-                  <th className="py-3 px-3">Stop Loss</th>
+                  <th className="py-3 px-3">Current value</th>
+                  <th className="py-3 px-3">Weight</th>
+                  <th className="py-3 px-3">Return</th>
+                  <th className="py-3 px-3">Action</th>
                   <th className="py-3 px-3 text-right">Details</th>
                 </tr>
               </thead>
@@ -887,9 +962,9 @@ export const PortfolioHealthView: React.FC = () => {
                         </td>
                         <td className="py-3.5 px-3 text-slate-300 font-semibold">{p.shares.toFixed(0)}</td>
                         <td className="py-3.5 px-3 text-slate-400">₹{p.buy_price.toFixed(1)}</td>
-                        <td className="py-3.5 px-3 text-white font-bold">₹{p.current_price.toFixed(1)}</td>
                         <td className="py-3.5 px-3 text-slate-200 font-bold">
-                          ₹{p.current_value.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                          <span className="block text-white">₹{p.current_price.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+                          <span className="block text-[10px] font-normal text-slate-500">₹{p.current_value.toLocaleString('en-IN', { maximumFractionDigits: 0 })} value</span>
                         </td>
                         <td className="py-3.5 px-3">
                           <span className="text-white font-semibold">{p.weight_pct.toFixed(1)}%</span>
@@ -899,6 +974,7 @@ export const PortfolioHealthView: React.FC = () => {
                         </td>
                         <td className={`py-3.5 px-3 font-bold ${p.unrealized_pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                           {pnlSign}{p.unrealized_pnl_pct.toFixed(1)}%
+                          <span className="block text-[10px] font-normal">{pnlSign}₹{p.unrealized_pnl.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
                         </td>
                         <td className="py-3.5 px-3 whitespace-nowrap">
                           <span
@@ -915,19 +991,6 @@ export const PortfolioHealthView: React.FC = () => {
                             {p.action_badge}
                           </span>
                         </td>
-                        <td className="py-3.5 px-3 text-slate-300">
-                          {p.dip_target_price > 0 ? (
-                            <div>
-                              <span>₹{p.dip_target_price.toFixed(1)}</span>
-                              <span className="text-[10px] text-amber-400 block">(-{p.dip_discount_pct.toFixed(1)}%)</span>
-                            </div>
-                          ) : (
-                            'N/A'
-                          )}
-                        </td>
-                        <td className="py-3.5 px-3 text-rose-400 font-semibold">
-                          ₹{p.stop_loss_level > 0 ? p.stop_loss_level.toFixed(1) : 'N/A'}
-                        </td>
                         <td className="py-3.5 px-3 text-right">
                           <button className="p-1 rounded-lg text-slate-400 hover:text-white">
                             {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -938,7 +1001,7 @@ export const PortfolioHealthView: React.FC = () => {
                       {/* Expanded Deep Diagnostic Drawer */}
                       {isExpanded && (
                         <tr className="bg-white/[0.015]">
-                          <td colSpan={11} className="p-4 border-b border-white/[0.06]">
+                          <td colSpan={8} className="p-4 border-b border-white/[0.06]">
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 font-sans text-xs">
                               <div className="space-y-1.5 p-3 rounded-xl bg-white/[0.02] border border-white/[0.04]">
                                 <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">
@@ -968,6 +1031,13 @@ export const PortfolioHealthView: React.FC = () => {
                                 <div className="text-slate-400 text-[11px]">
                                   Trend: <span className="text-slate-200">{p.technical_trend}</span>
                                 </div>
+                              </div>
+
+                              <div className="space-y-1.5 p-3 rounded-xl bg-white/[0.02] border border-white/[0.04] font-mono">
+                                <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Price levels</span>
+                                <div className="text-slate-300">Dip zone: <span className="font-bold text-amber-400">{p.dip_target_price > 0 ? `₹${p.dip_target_price.toLocaleString('en-IN', { maximumFractionDigits: 1 })} (${p.dip_discount_pct.toFixed(1)}%)` : '—'}</span></div>
+                                <div className="text-slate-300">Stop level: <span className="font-bold text-rose-400">{p.stop_loss_level > 0 ? `₹${p.stop_loss_level.toLocaleString('en-IN', { maximumFractionDigits: 1 })}` : '—'}</span></div>
+                                <div className="text-slate-300">Target weight: <span className="font-bold text-slate-100">{p.target_weight_pct.toFixed(1)}%</span></div>
                               </div>
 
                               <div className="space-y-1.5 p-3 rounded-xl bg-white/[0.02] border border-white/[0.04] font-mono">
@@ -1120,7 +1190,7 @@ export const PortfolioHealthView: React.FC = () => {
                   onClick={handleLoadDemoHoldings}
                   className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.1] text-xs text-amber-400 font-mono transition-colors cursor-pointer"
                 >
-                  📥 Load Demo Compounders
+                  Load sample holdings
                 </button>
               </div>
             ) : (

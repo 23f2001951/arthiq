@@ -8,6 +8,8 @@ import {
   calculateMFSIP,
   fetchMFPortfolio,
   addOrUpdateMFSIP,
+  editMFSIP,
+  deleteMFSIP,
   resumeMFSIP,
   reallocateMFSIP,
   resetMFPortfolio,
@@ -15,6 +17,7 @@ import {
   saveMFPortfolio,
   submitMFSIPCheckin,
   submitMFSIPBatchCheckin,
+  calculatePowerAge,
 } from '../api/client';
 import {
   MFSchemeSearchItem,
@@ -25,6 +28,8 @@ import {
   MFSIPCalculateResponse,
   MFPortfolioResponse,
   MFPortfolioHealthResponse,
+  MFPowerAgeResponse,
+  MFPowerAgeRequest,
 } from '../types/api';
 import {
   Search,
@@ -42,6 +47,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   Trash2,
+  Pencil,
   Activity,
   Award,
   Check,
@@ -59,6 +65,7 @@ import {
   Play,
   CheckSquare,
   Square,
+  Zap,
 } from 'lucide-react';
 import { MFNavChart } from '../components/mf/MFNavChart';
 import { MFRollingReturnsVisualizer } from '../components/mf/MFRollingReturnsVisualizer';
@@ -67,8 +74,8 @@ import { MFWealthTrajectoryChart } from '../components/mf/MFWealthTrajectoryChar
 import { MFFundComparisonBar } from '../components/mf/MFFundComparisonBar';
 
 export interface MutualFundsViewProps {
-  initialTab?: 'analyzer' | 'advisor' | 'sip_planner' | 'portfolio';
-  mode?: 'screener' | 'advisor' | 'portfolio' | 'all';
+  initialTab?: 'analyzer' | 'advisor' | 'sip_planner' | 'portfolio' | 'power_age';
+  mode?: 'screener' | 'advisor' | 'portfolio' | 'power_age' | 'all';
 }
 
 export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
@@ -80,10 +87,11 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
     if (mode === 'screener') return 'analyzer';
     if (mode === 'advisor') return 'advisor';
     if (mode === 'portfolio') return 'portfolio';
+    if (mode === 'power_age') return 'power_age';
     return 'analyzer';
   };
 
-  const [activeTab, setActiveTab] = useState<'analyzer' | 'advisor' | 'sip_planner' | 'portfolio'>(getStartingTab);
+  const [activeTab, setActiveTab] = useState<'analyzer' | 'advisor' | 'sip_planner' | 'portfolio' | 'power_age'>(getStartingTab);
   const [expandedSwitchSipId, setExpandedSwitchSipId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -95,6 +103,8 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
       setActiveTab('advisor');
     } else if (mode === 'portfolio') {
       setActiveTab('portfolio');
+    } else if (mode === 'power_age') {
+      setActiveTab('power_age');
     }
   }, [initialTab, mode]);
 
@@ -109,6 +119,7 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
   const [rollingReturns, setRollingReturns] = useState<MFRollingReturnsResponse | null>(null);
   const [rollingWindow, setRollingWindow] = useState<number>(3);
   const [riskMetrics, setRiskMetrics] = useState<MFRiskMetricsResponse | null>(null);
+  const riskMetricsTrustworthy = Boolean(riskMetrics && riskMetrics.volatility >= 1 && Math.abs(riskMetrics.sharpe_ratio) <= 5 && Math.abs(riskMetrics.sortino_ratio) <= 5);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [minRating, setMinRating] = useState<number>(0);
   const [maxExpenseRatio, setMaxExpenseRatio] = useState<number>(0);
@@ -118,20 +129,20 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
   const displayedFunds = React.useMemo(() => {
     let list = [...searchResults];
     if (minRating > 0) {
-      list = list.filter((f) => (f.crisil_rating || 5) >= minRating);
+      list = list.filter((f) => f.crisil_rating != null && f.crisil_rating >= minRating);
     }
     if (maxExpenseRatio > 0) {
-      list = list.filter((f) => (f.expense_ratio || 0.65) <= maxExpenseRatio);
+      list = list.filter((f) => f.expense_ratio != null && f.expense_ratio <= maxExpenseRatio);
     }
     if (minAumCr > 0) {
       list = list.filter((f) => (f.aum_cr || 0) >= minAumCr);
     }
     list.sort((a, b) => {
       if (sortBy === 'rating_high') {
-        return (b.crisil_rating || 5) - (a.crisil_rating || 5);
+        return (b.crisil_rating ?? -1) - (a.crisil_rating ?? -1);
       }
       if (sortBy === 'expense_low') {
-        return (a.expense_ratio || 0.65) - (b.expense_ratio || 0.65);
+        return (a.expense_ratio ?? Number.POSITIVE_INFINITY) - (b.expense_ratio ?? Number.POSITIVE_INFINITY);
       }
       if (sortBy === 'aum_high') {
         return (b.aum_cr || 0) - (a.aum_cr || 0);
@@ -168,6 +179,7 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
   const [portfolioData, setPortfolioData] = useState<MFPortfolioResponse | null>(null);
   const [isLoadingPortfolio, setIsLoadingPortfolio] = useState(false);
   const [showAddSipModal, setShowAddSipModal] = useState(false);
+  const [editingSipId, setEditingSipId] = useState<string | null>(null);
   const [newSipScheme, setNewSipScheme] = useState<number>(122639);
   const [selectedSchemeName, setSelectedSchemeName] = useState<string>('Parag Parikh Flexi Cap Fund - Direct Plan - Growth');
   const [modalSearchQuery, setModalSearchQuery] = useState('');
@@ -192,6 +204,43 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
   const [healthResult, setHealthResult] = useState<MFPortfolioHealthResponse | null>(null);
   const [isLoadingHealth, setIsLoadingHealth] = useState(false);
   const [isResettingPortfolio, setIsResettingPortfolio] = useState(false);
+
+  // ---------------------------------------------------------------------------
+  // 5. Power Age (FIRE Freedom) Calculator State
+  // ---------------------------------------------------------------------------
+  const [powerAgeInputAge, setPowerAgeInputAge] = useState<number>(28);
+  const [powerAgeInputCorpus, setPowerAgeInputCorpus] = useState<number>(75000);
+  const [powerAgeInputSip, setPowerAgeInputSip] = useState<number>(10000);
+  const [powerAgeInputStepUp, setPowerAgeInputStepUp] = useState<number>(10);
+  const [powerAgeInputCagr, setPowerAgeInputCagr] = useState<number>(13.5);
+  const [powerAgeInputExpense, setPowerAgeInputExpense] = useState<number>(50000);
+  const [powerAgeInputInflation, setPowerAgeInputInflation] = useState<number>(6);
+  const [powerAgeInputSwr, setPowerAgeInputSwr] = useState<number>(5);
+  const [powerAgeResult, setPowerAgeResult] = useState<MFPowerAgeResponse | null>(null);
+  const [isLoadingPowerAge, setIsLoadingPowerAge] = useState<boolean>(false);
+  const [showYearByYearTable, setShowYearByYearTable] = useState<boolean>(false);
+
+  const handleCalculatePowerAge = async (overrideParams?: Partial<MFPowerAgeRequest>) => {
+    setIsLoadingPowerAge(true);
+    try {
+      const res = await calculatePowerAge({
+        current_age: overrideParams?.current_age ?? powerAgeInputAge,
+        current_corpus: overrideParams?.current_corpus ?? powerAgeInputCorpus,
+        monthly_sip: overrideParams?.monthly_sip ?? powerAgeInputSip,
+        annual_step_up_pct: overrideParams?.annual_step_up_pct ?? powerAgeInputStepUp,
+        expected_cagr_pct: overrideParams?.expected_cagr_pct ?? powerAgeInputCagr,
+        target_monthly_expense_today: overrideParams?.target_monthly_expense_today ?? powerAgeInputExpense,
+        inflation_pct: overrideParams?.inflation_pct ?? powerAgeInputInflation,
+        swr_pct: overrideParams?.swr_pct ?? powerAgeInputSwr,
+        max_age: 80,
+      });
+      setPowerAgeResult(res);
+    } catch (err) {
+      console.error('Failed to calculate Power Age:', err);
+    } finally {
+      setIsLoadingPowerAge(false);
+    }
+  };
 
   const handleStartDateChange = (val: string) => {
     setNewSipStartDate(val);
@@ -287,6 +336,65 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
     }
   };
 
+  const handleOpenAddModal = () => {
+    setEditingSipId(null);
+    setNewSipScheme(122639);
+    setSelectedSchemeName('Parag Parikh Flexi Cap Fund - Direct Plan - Growth');
+    setModalSearchQuery('');
+    setNewSipAmount(10000);
+    setNewSipStartDate('2024-01-05');
+    setNewSipEndDate('');
+    setNewSipStatus('ACTIVE');
+    setNewSipDay(5);
+    setNewSipStepUp(0);
+    setCustomInvested('');
+    setCustomCurrentValue('');
+    setSkippedMonths([]);
+    setShowAddSipModal(true);
+  };
+
+  const handleOpenEditModal = (sip: any) => {
+    setEditingSipId(sip.sip_id);
+    setNewSipScheme(sip.scheme_code);
+    setSelectedSchemeName(sip.scheme_name);
+    setModalSearchQuery(sip.scheme_name);
+    setNewSipAmount(sip.monthly_amount);
+    setNewSipStartDate(sip.start_date || '');
+    setNewSipEndDate(sip.end_date || '');
+    setNewSipStatus(sip.status || 'ACTIVE');
+    setNewSipDay(sip.sip_day || 5);
+    setNewSipStepUp(sip.step_up_pct || 0);
+    setCustomInvested(sip.total_invested ? String(sip.total_invested) : '');
+    setCustomCurrentValue(sip.current_value ? String(sip.current_value) : '');
+    setSkippedMonths(sip.skipped_months && Array.isArray(sip.skipped_months) ? [...sip.skipped_months] : []);
+    setShowAddSipModal(true);
+  };
+
+  const handleDeleteSip = async (sipId: string, schemeName: string) => {
+    if (
+      !window.confirm(
+        `Are you sure you want to delete "${schemeName}" from your portfolio?\n\nThis will remove only this entry and its associated transactions, leaving all other portfolio holdings intact.`
+      )
+    ) {
+      return;
+    }
+    setActionProcessingId(sipId);
+    try {
+      await deleteMFSIP(sipId);
+      setActionSuccessMessage(`✓ Successfully removed "${schemeName}" from your portfolio.`);
+      setTimeout(() => setActionSuccessMessage(null), 5000);
+      await loadPortfolio();
+      if (healthResult) {
+        handlePredictHealth();
+      }
+    } catch (err) {
+      console.error('Failed to delete SIP', err);
+      alert('Could not delete SIP entry. Please try again.');
+    } finally {
+      setActionProcessingId(null);
+    }
+  };
+
   // Save Portfolio and Monthly SIP Check-In States
   const [isSavingPortfolio, setIsSavingPortfolio] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
@@ -303,6 +411,7 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
     loadSchemeDetails(selectedSchemeCode);
     loadPortfolio();
     runSipCalculation();
+    handleCalculatePowerAge();
   }, []);
 
   const loadSearchResults = async (query = '', cat = 'All') => {
@@ -407,6 +516,17 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
       if (res.notes) {
         setPortfolioNotes(res.notes);
       }
+      const portVal = res.current_value || res.total_portfolio_value || 0;
+      const portSip = res.monthly_sip_run_rate || res.total_monthly_sip || 0;
+      if (portVal > 0) {
+        setPowerAgeInputCorpus(Math.round(portVal));
+      }
+      if (portSip > 0) {
+        setPowerAgeInputSip(Math.round(portSip));
+      }
+      if (res.power_age_projection) {
+        setPowerAgeResult(res.power_age_projection);
+      }
     } catch (err) {
       console.error('Failed to load MF portfolio', err);
     } finally {
@@ -499,7 +619,7 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
   const handleSaveSip = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await addOrUpdateMFSIP({
+      const payload = {
         scheme_code: Number(newSipScheme),
         amount: Number(newSipAmount),
         start_date: newSipStartDate,
@@ -510,17 +630,29 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
         custom_invested: customInvested ? Number(customInvested) : null,
         custom_current_value: customCurrentValue ? Number(customCurrentValue) : null,
         skipped_months: skippedMonths,
-      });
+      };
+
+      if (editingSipId) {
+        await editMFSIP(editingSipId, payload);
+        setActionSuccessMessage(`✓ Updated holding details for "${selectedSchemeName}".`);
+      } else {
+        await addOrUpdateMFSIP(payload);
+        setActionSuccessMessage(`✓ Added "${selectedSchemeName}" to your portfolio.`);
+      }
+
       setShowAddSipModal(false);
+      setEditingSipId(null);
       setCustomInvested('');
       setCustomCurrentValue('');
       setSkippedMonths([]);
+      setTimeout(() => setActionSuccessMessage(null), 5000);
       await loadPortfolio();
       if (healthResult) {
         handlePredictHealth();
       }
     } catch (err) {
       console.error('Failed to save SIP schedule', err);
+      alert('Could not save SIP schedule. Please check inputs.');
     }
   };
 
@@ -669,6 +801,20 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
 
           <div className="flex items-center gap-2">
             <button
+              onClick={() => {
+                setActiveTab(activeTab === 'power_age' ? 'portfolio' : 'power_age');
+                if (activeTab !== 'power_age' && !powerAgeResult) handleCalculatePowerAge();
+              }}
+              className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl border transition-all shadow-sm ${
+                activeTab === 'power_age'
+                  ? 'bg-amber-500/25 text-amber-300 border-amber-500/40 font-bold'
+                  : 'bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
+              }`}
+            >
+              <Zap className="h-3.5 w-3.5 text-amber-400" />
+              {activeTab === 'power_age' ? 'Back to Portfolio' : '⚡ Power Age (FIRE)'}
+            </button>
+            <button
               onClick={handlePredictHealth}
               disabled={isLoadingHealth}
               className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25 transition-all shadow-sm"
@@ -757,6 +903,20 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
             >
               <PieChart className="h-3.5 w-3.5" />
               Portfolio & SIP Diagnostics
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab('power_age');
+                if (!powerAgeResult) handleCalculatePowerAge();
+              }}
+              className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                activeTab === 'power_age'
+                  ? 'bg-gradient-to-r from-amber-500/25 to-orange-500/25 text-amber-300 border border-amber-500/40 font-bold shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Zap className="h-3.5 w-3.5 text-amber-400" />
+              ⚡ Power Age (FIRE)
             </button>
           </div>
         </div>
@@ -902,18 +1062,51 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <h4 className="text-xs font-semibold text-white line-clamp-1">{fund.scheme_name}</h4>
-                          <p className="text-[11px] text-slate-400 mt-0.5">{fund.fund_house}</p>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <h4 className="text-xs font-semibold text-white line-clamp-1">{fund.scheme_name}</h4>
+                            {fund.category_rank && (
+                              <span
+                                className="text-[9px] font-bold px-1.5 py-0.5 rounded border bg-amber-500/10 text-amber-300 border-amber-500/30 whitespace-nowrap"
+                                title={fund.category_rank.rank_label}
+                              >
+                                {fund.category_rank.rank_badge}
+                              </span>
+                            )}
+                            {fund.powerup_form && (
+                              <span
+                                className={`text-[9px] font-bold px-1.5 py-0.5 rounded border flex items-center gap-0.5 whitespace-nowrap ${
+                                  fund.powerup_form.badge === 'IN_FORM'
+                                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                    : fund.powerup_form.badge === 'ON_TRACK'
+                                    ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30'
+                                    : fund.powerup_form.badge === 'OFF_TRACK'
+                                    ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                                    : 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                                }`}
+                              >
+                                <span>{fund.powerup_form.badge_emoji}</span>
+                                <span>{fund.powerup_form.badge_label}</span>
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-400">{fund.fund_house}</p>
                         </div>
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 whitespace-nowrap">
-                          ★ {fund.crisil_rating || 5}
-                        </span>
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 whitespace-nowrap">
+                            {fund.crisil_rating != null ? `★ ${fund.crisil_rating}` : 'Rating unavailable'}
+                          </span>
+                          {fund.current_nav && (
+                            <span className="text-[10px] font-bold text-emerald-400">
+                              ₹{fund.current_nav.toFixed(2)}
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       <div className="mt-2.5 flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/60 pt-2">
                         <span className="text-emerald-400 font-medium">{fund.category}</span>
-                        <span>TER: <strong className="text-slate-200">{fund.expense_ratio || 0.65}%</strong></span>
+                        <span>TER: <strong className="text-slate-200">{fund.expense_ratio != null ? `${fund.expense_ratio}%` : '—'}</strong></span>
                         <span>AUM: <strong className="text-slate-200">₹{fund.aum_cr ? (fund.aum_cr / 1000).toFixed(1) + 'k' : '—'} Cr</strong></span>
                       </div>
                     </div>
@@ -931,11 +1124,38 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
                 <div className="bg-slate-900/60 rounded-2xl border border-slate-800/80 p-5">
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-semibold uppercase tracking-wider">
                           {schemeDetails.category}
                         </span>
                         <span className="text-xs text-slate-400">Direct Plan • Growth</span>
+                        {schemeDetails.category_rank && (
+                          <span
+                            className="px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-bold flex items-center gap-1"
+                            title={`${schemeDetails.category_rank.rank_label} • Top ${schemeDetails.category_rank.percentile}% percentile`}
+                          >
+                            <span>{schemeDetails.category_rank.rank_badge}</span>
+                            <span className="text-[9px] opacity-80">({schemeDetails.category_rank.rank_label})</span>
+                          </span>
+                        )}
+                        {schemeDetails.powerup_form && (
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                              schemeDetails.powerup_form.badge === 'IN_FORM'
+                                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                : schemeDetails.powerup_form.badge === 'ON_TRACK'
+                                ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30'
+                                : schemeDetails.powerup_form.badge === 'OFF_TRACK'
+                                ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                                : 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                            }`}
+                            title={`Power Score: ${schemeDetails.powerup_form.power_score}/100 • ${schemeDetails.powerup_form.momentum_desc}`}
+                          >
+                            <span>{schemeDetails.powerup_form.badge_emoji}</span>
+                            <span>{schemeDetails.powerup_form.badge_label}</span>
+                            <span className="text-[9px] opacity-75 font-mono">({schemeDetails.powerup_form.power_score}/100)</span>
+                          </span>
+                        )}
                         {isLoadingDetails && (
                           <span className="text-[10px] text-amber-400 font-semibold animate-pulse ml-2">
                             • Loading...
@@ -991,7 +1211,7 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
 
                 {/* Seasoned Analyst Conviction & Qualitative Due Diligence Memo */}
                 {schemeDetails.analyst_conviction && (
-                  <div className="bg-gradient-to-br from-slate-900 via-slate-900/90 to-slate-950 rounded-2xl border border-emerald-500/30 p-5 space-y-4 shadow-xl shadow-emerald-950/10">
+                  <div className="workspace-verdict-card bg-gradient-to-br from-slate-900 via-slate-900/90 to-slate-950 rounded-2xl border border-emerald-500/30 p-5 space-y-4 shadow-xl shadow-emerald-950/10">
                     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
                       <div className="flex items-center gap-3">
                         <div className="h-12 w-12 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center font-black text-xl text-emerald-400">
@@ -1102,28 +1322,31 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
                     </h3>
 
                     {riskMetrics ? (
+                      <>
+                      {!riskMetricsTrustworthy && <p className="rounded-lg border border-amber-700/20 bg-amber-950/20 px-3 py-2 text-xs text-amber-800">Risk ratios are hidden because the stored NAV series has too little variation to support a reliable estimate.</p>}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                         <div className="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/60">
                           <span className="text-[10px] text-slate-400 uppercase font-medium">Sharpe Ratio</span>
-                          <p className="text-base font-bold text-white mt-0.5">{riskMetrics.sharpe_ratio}</p>
+                          <p className="text-base font-bold text-white mt-0.5">{riskMetricsTrustworthy ? riskMetrics.sharpe_ratio : '—'}</p>
                           <span className="text-[10px] text-emerald-400">Risk-Adjusted Alpha</span>
                         </div>
                         <div className="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/60">
                           <span className="text-[10px] text-slate-400 uppercase font-medium">Sortino Ratio</span>
-                          <p className="text-base font-bold text-white mt-0.5">{riskMetrics.sortino_ratio}</p>
+                          <p className="text-base font-bold text-white mt-0.5">{riskMetricsTrustworthy ? riskMetrics.sortino_ratio : '—'}</p>
                           <span className="text-[10px] text-sky-400">Downside Alpha</span>
                         </div>
                         <div className="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/60">
                           <span className="text-[10px] text-slate-400 uppercase font-medium">Volatility (Std Dev)</span>
-                          <p className="text-base font-bold text-slate-200 mt-0.5">{riskMetrics.volatility}%</p>
+                          <p className="text-base font-bold text-slate-200 mt-0.5">{riskMetricsTrustworthy ? `${riskMetrics.volatility}%` : '—'}</p>
                           <span className="text-[10px] text-slate-400">Annualized</span>
                         </div>
                         <div className="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/60">
                           <span className="text-[10px] text-slate-400 uppercase font-medium">Beta vs Index</span>
-                          <p className="text-base font-bold text-slate-200 mt-0.5">{riskMetrics.beta}</p>
+                          <p className="text-base font-bold text-slate-200 mt-0.5">{riskMetricsTrustworthy ? riskMetrics.beta : '—'}</p>
                           <span className="text-[10px] text-slate-400">Systematic Risk</span>
                         </div>
                       </div>
+                      </>
                     ) : null}
                   </div>
                 </div>
@@ -1397,9 +1620,16 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
-                            {fund.category} ({fund.allocation_pct}%)
-                          </span>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
+                              {fund.category} ({fund.allocation_pct}%)
+                            </span>
+                            {fund.category_rank && (
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                                {fund.category_rank.rank_badge}
+                              </span>
+                            )}
+                          </div>
                           <h5 className="text-sm font-bold text-white mt-0.5">{fund.scheme_name}</h5>
                           <p className="text-xs text-slate-400 mt-1">{fund.rationale}</p>
                         </div>
@@ -1708,7 +1938,7 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
                   </button>
 
                   <button
-                    onClick={() => setShowAddSipModal(true)}
+                    onClick={handleOpenAddModal}
                     className="px-3.5 py-1.5 rounded-xl bg-purple-500 hover:bg-purple-600 text-white font-bold text-xs flex items-center gap-1.5 shadow-lg shadow-purple-500/20 transition-all"
                   >
                     <PlusCircle className="h-4 w-4" />
@@ -1728,23 +1958,78 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 border-t border-slate-800/80 pt-4">
-                <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800/60">
-                  <span className="text-[10px] text-slate-400 uppercase">Invested Capital</span>
-                  <p className="text-base font-bold text-white mt-0.5">₹{portfolioData.total_invested.toLocaleString('en-IN')}</p>
-                </div>
-                <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800/60">
-                  <span className="text-[10px] text-slate-400 uppercase">Current Valuation</span>
-                  <p className="text-base font-bold text-emerald-400 mt-0.5">₹{portfolioData.current_value.toLocaleString('en-IN')}</p>
-                </div>
-                <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800/60">
-                  <span className="text-[10px] text-slate-400 uppercase">Net Profit / Absolute</span>
-                  <p className={`text-base font-bold mt-0.5 ${portfolioData.unrealized_profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    ₹{portfolioData.unrealized_profit.toLocaleString('en-IN')} ({portfolioData.absolute_return_pct}%)
+                <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/60 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold">Total Invested</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">Capital</span>
+                    </div>
+                    <p className="text-base font-bold text-white mt-1">₹{portfolioData.total_invested.toLocaleString('en-IN')}</p>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-2 flex items-center gap-1.5 flex-wrap">
+                    <span className="text-blue-400 font-medium">Active: ₹{(portfolioData.active_invested ?? portfolioData.total_invested).toLocaleString('en-IN')}</span>
+                    {(portfolioData.closed_invested ?? 0) > 0 && (
+                      <>
+                        <span className="text-slate-600">•</span>
+                        <span className="text-slate-400">Retained: ₹{(portfolioData.closed_invested ?? 0).toLocaleString('en-IN')}</span>
+                      </>
+                    )}
                   </p>
                 </div>
-                <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800/60">
-                  <span className="text-[10px] text-slate-400 uppercase">Active Monthly SIP Outflow</span>
-                  <p className="text-base font-bold text-amber-300 mt-0.5">₹{portfolioData.monthly_sip_run_rate.toLocaleString('en-IN')}/mo</p>
+
+                <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/60 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold">Current Valuation</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-medium">Live NAV</span>
+                    </div>
+                    <p className="text-base font-bold text-emerald-400 mt-1">₹{portfolioData.current_value.toLocaleString('en-IN')}</p>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-2 flex items-center gap-1.5 flex-wrap">
+                    <span className="text-emerald-300 font-medium">Active: ₹{(portfolioData.active_current_value ?? portfolioData.current_value).toLocaleString('en-IN')}</span>
+                    {(portfolioData.closed_current_value ?? 0) > 0 && (
+                      <>
+                        <span className="text-slate-600">•</span>
+                        <span className="text-slate-400">Retained: ₹{(portfolioData.closed_current_value ?? 0).toLocaleString('en-IN')}</span>
+                      </>
+                    )}
+                  </p>
+                </div>
+
+                <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/60 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold">Net Returns</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${portfolioData.unrealized_profit >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                        {portfolioData.absolute_return_pct >= 0 ? '+' : ''}{portfolioData.absolute_return_pct}%
+                      </span>
+                    </div>
+                    <p className={`text-base font-bold mt-1 ${portfolioData.unrealized_profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {portfolioData.unrealized_profit >= 0 ? '+' : ''}₹{portfolioData.unrealized_profit.toLocaleString('en-IN')}
+                    </p>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-2 flex items-center gap-1.5 flex-wrap">
+                    <span className="text-emerald-300 font-medium">Active: +₹{(portfolioData.active_profit ?? 0).toLocaleString('en-IN')}</span>
+                    {(portfolioData.closed_profit ?? 0) > 0 && (
+                      <>
+                        <span className="text-slate-600">•</span>
+                        <span className="text-slate-400">Retained: +₹{(portfolioData.closed_profit ?? 0).toLocaleString('en-IN')}</span>
+                      </>
+                    )}
+                  </p>
+                </div>
+
+                <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/60 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold">Active Monthly SIP</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 font-medium">Monthly Flow</span>
+                    </div>
+                    <p className="text-base font-bold text-amber-300 mt-1">₹{portfolioData.monthly_sip_run_rate.toLocaleString('en-IN')}/mo</p>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-2">
+                    {portfolioData.active_sips_count} active fund{portfolioData.active_sips_count !== 1 ? 's' : ''} running • XIRR: <strong className="text-emerald-400">{portfolioData.portfolio_xirr_pct !== null && portfolioData.portfolio_xirr_pct !== undefined ? `${portfolioData.portfolio_xirr_pct}%` : '—'}</strong>
+                  </p>
                 </div>
               </div>
             </div>
@@ -1768,6 +2053,186 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
                 <span>{checkinFeedback}</span>
               </div>
               <button onClick={() => setCheckinFeedback(null)} className="text-indigo-400 hover:text-white text-xs">✕</button>
+            </div>
+          )}
+
+          {/* PowerUp Form Index & Power Score Meter */}
+          {portfolioData && portfolioData.powerup_summary && portfolioData.total_invested > 0 && (
+            <div className="bg-gradient-to-br from-slate-900/90 via-slate-900/60 to-slate-950/80 rounded-2xl border border-emerald-500/30 p-5 space-y-4 shadow-xl">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-500/20 to-teal-500/20 border border-emerald-500/40 flex flex-col items-center justify-center shadow-lg shadow-emerald-500/10">
+                    <span className="text-[10px] uppercase font-bold text-emerald-400">Power</span>
+                    <span className="text-xl font-extrabold text-white leading-none">
+                      {portfolioData.powerup_summary.portfolio_power_score.toFixed(0)}
+                    </span>
+                    <span className="text-[9px] text-slate-400">/ 100</span>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                        <Zap className="h-3 w-3 text-emerald-400" />
+                        PowerUp Form Index
+                      </span>
+                      <h4 className="text-sm font-bold text-white">
+                        {portfolioData.powerup_summary.verdict}
+                      </h4>
+                    </div>
+                    <p className="text-xs text-slate-300 mt-1 max-w-xl">
+                      {portfolioData.powerup_summary.verdict_description}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Power Age Quick Shortcut */}
+                {portfolioData.power_age_projection && (
+                  <button
+                    onClick={() => {
+                      setActiveTab('power_age');
+                      setPowerAgeResult(portfolioData.power_age_projection || null);
+                    }}
+                    className="p-3 rounded-xl bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-amber-500/15 border border-amber-500/40 hover:border-amber-400 text-left transition-all group"
+                  >
+                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-300">
+                      <Zap className="h-3.5 w-3.5 text-amber-400" />
+                      <span>Power Age: Age {portfolioData.power_age_projection.power_age}</span>
+                      <ArrowUpRight className="h-3.5 w-3.5 ml-1 opacity-70 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                    </div>
+                    <p className="text-[10px] text-slate-300 mt-0.5">
+                      FIRE Freedom in {portfolioData.power_age_projection.years_to_freedom} yrs • Goal: ₹{(portfolioData.power_age_projection.corpus_at_power_age / 10000000).toFixed(2)} Cr
+                    </p>
+                  </button>
+                )}
+              </div>
+
+              {/* Form Distribution Meter Bar */}
+              <div className="space-y-1.5 pt-2 border-t border-slate-800/60">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400 font-medium">Portfolio Capital Form Allocation</span>
+                  <div className="flex items-center gap-3 text-[11px]">
+                    <span className="flex items-center gap-1 text-emerald-400 font-medium">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                      In-Form: {portfolioData.powerup_summary.capital_distribution.in_form_pct}%
+                    </span>
+                    <span className="flex items-center gap-1 text-sky-400 font-medium">
+                      <span className="w-2 h-2 rounded-full bg-sky-400"></span>
+                      On-Track: {portfolioData.powerup_summary.capital_distribution.on_track_pct}%
+                    </span>
+                    {portfolioData.powerup_summary.capital_distribution.off_track_pct > 0 && (
+                      <span className="flex items-center gap-1 text-amber-400 font-medium">
+                        <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                        Off-Track: {portfolioData.powerup_summary.capital_distribution.off_track_pct}%
+                      </span>
+                    )}
+                    {portfolioData.powerup_summary.capital_distribution.out_of_form_pct > 0 && (
+                      <span className="flex items-center gap-1 text-rose-400 font-medium">
+                        <span className="w-2 h-2 rounded-full bg-rose-400"></span>
+                        Out-of-Form: {portfolioData.powerup_summary.capital_distribution.out_of_form_pct}%
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Stacked Progress Bar */}
+                <div className="w-full h-3 bg-slate-950 rounded-full overflow-hidden flex shadow-inner">
+                  <div
+                    style={{ width: `${portfolioData.powerup_summary.capital_distribution.in_form_pct}%` }}
+                    className="bg-emerald-500 h-full transition-all duration-500"
+                    title={`In-Form: ${portfolioData.powerup_summary.capital_distribution.in_form_pct}%`}
+                  />
+                  <div
+                    style={{ width: `${portfolioData.powerup_summary.capital_distribution.on_track_pct}%` }}
+                    className="bg-sky-500 h-full transition-all duration-500"
+                    title={`On-Track: ${portfolioData.powerup_summary.capital_distribution.on_track_pct}%`}
+                  />
+                  <div
+                    style={{ width: `${portfolioData.powerup_summary.capital_distribution.off_track_pct}%` }}
+                    className="bg-amber-500 h-full transition-all duration-500"
+                    title={`Off-Track: ${portfolioData.powerup_summary.capital_distribution.off_track_pct}%`}
+                  />
+                  <div
+                    style={{ width: `${portfolioData.powerup_summary.capital_distribution.out_of_form_pct}%` }}
+                    className="bg-rose-500 h-full transition-all duration-500"
+                    title={`Out-of-Form: ${portfolioData.powerup_summary.capital_distribution.out_of_form_pct}%`}
+                  />
+                </div>
+              </div>
+
+              {/* Actionable Rebalancing Plan Card */}
+              {portfolioData.powerup_summary.has_rebalancing_needed && (
+                <div className="bg-amber-500/10 rounded-xl border border-amber-500/30 p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0" />
+                      <span className="text-xs font-bold text-amber-300">
+                        PowerUp Actionable Rebalancing Plan ({portfolioData.powerup_summary.rebalancing_plan.length} fund{portfolioData.powerup_summary.rebalancing_plan.length > 1 ? 's' : ''} dragging capital)
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-semibold text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30">
+                      ₹{portfolioData.powerup_summary.capital_distribution.drag_capital_val.toLocaleString('en-IN')} ({portfolioData.powerup_summary.capital_distribution.drag_capital_pct}%) drag identified
+                    </span>
+                  </div>
+
+                  <div className="space-y-3">
+                    {portfolioData.powerup_summary.rebalancing_plan.map((item, idx) => (
+                      <div key={idx} className="bg-slate-950/80 rounded-xl p-3 border border-amber-500/20 space-y-2">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-bold text-white">{item.scheme_name}</span>
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                {item.form_status === 'OFF_TRACK' ? '🟡 Off-Track' : '🔴 Out-of-Form'}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-300 mt-0.5">
+                              Valuation: <strong className="text-white">₹{item.current_value.toLocaleString('en-IN')}</strong> • SIP: <strong className="text-white">₹{item.monthly_amount.toLocaleString('en-IN')}/mo</strong> • Alpha Lag: <strong className="text-rose-400">-{item.alpha_lag_pct.toFixed(1)}%</strong>
+                            </p>
+                          </div>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                            Prescription: {item.action_mode === 'PAUSE_AND_REDIRECT' ? 'Pause SIP & Redirect' : 'Full Switch'}
+                          </span>
+                        </div>
+
+                        <p className="text-[11px] text-amber-200/90 italic">
+                          💡 {item.prescription}
+                        </p>
+
+                        {/* Top Recommended Replacement with Same AMC Priority */}
+                        {item.recommended_switch && (
+                          <div className="bg-slate-900/90 rounded-lg p-2.5 border border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] uppercase font-bold text-slate-400">Recommended Alternative:</span>
+                                <span className="text-xs font-bold text-emerald-400">{item.recommended_switch.target_scheme_name}</span>
+                                {item.recommended_switch.is_same_amc && (
+                                  <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-0.5">
+                                    <Zap className="h-2.5 w-2.5 text-emerald-400" />
+                                    Same AMC Instant Switch (T+1)
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[10px] text-slate-400">
+                                {item.recommended_switch.comparison_advantage}
+                              </p>
+                            </div>
+
+                            <button
+                              onClick={() => {
+                                if (item.sip_id) {
+                                  setExpandedSwitchSipId(item.sip_id);
+                                }
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-[11px] transition-all"
+                            >
+                              View Switch Details
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1821,9 +2286,16 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
                           <div className="text-[10px] text-slate-500 font-normal">Code: {h.scheme_code} • NAV: ₹{h.current_nav?.toFixed(2)}</div>
                         </td>
                         <td className="py-3 text-slate-400">
-                          <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px]">
-                            {h.category}
-                          </span>
+                          <div className="flex flex-col gap-1 items-start">
+                            <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px]">
+                              {h.category}
+                            </span>
+                            {h.category_rank && (
+                              <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/25 text-[9px] font-bold whitespace-nowrap" title={h.category_rank.rank_label}>
+                                {h.category_rank.rank_badge}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3 text-right font-mono">{h.total_units.toFixed(2)}</td>
                         <td className="py-3 text-right font-mono font-medium">₹{h.invested_amount.toLocaleString('en-IN')}</td>
@@ -1946,7 +2418,7 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
               </div>
               <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
                 <button
-                  onClick={() => setShowAddSipModal(true)}
+                  onClick={handleOpenAddModal}
                   className="px-4 py-2.5 rounded-xl bg-purple-500 hover:bg-purple-600 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-purple-500/20 transition-all"
                 >
                   <PlusCircle className="h-4 w-4" /> Add Your First SIP / Holding
@@ -2018,12 +2490,12 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
                   <div className="bg-slate-950/70 p-2.5 rounded-xl border border-slate-800/60 space-y-1.5">
                     <div className="flex items-center justify-between text-[10px]">
                       <span className="text-slate-400 font-medium">Downside Protection</span>
-                      <span className="font-bold text-slate-200">{healthResult.pillars.downside_protection ?? 16}/20</span>
+                      <span className="font-bold text-slate-200">{healthResult.pillars.downside_protection != null ? `${healthResult.pillars.downside_protection}/20` : '—'}</span>
                     </div>
                     <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
                       <div
                         className="h-full rounded-full bg-teal-400"
-                        style={{ width: `${Math.min(100, ((healthResult.pillars.downside_protection ?? 16) / 20) * 100)}%` }}
+                        style={{ width: `${Math.min(100, ((healthResult.pillars.downside_protection ?? 0) / 20) * 100)}%` }}
                       />
                     </div>
                   </div>
@@ -2119,20 +2591,36 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
                       <div key={sc.horizon_years} className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-2">
                         <div className="flex justify-between items-center text-xs">
                           <span className="font-bold text-white">{sc.horizon_years}-Year Horizon</span>
-                          <span className="text-[10px] text-slate-400 uppercase">Simulated</span>
+                          <span className="text-[10px] text-emerald-400 font-semibold">{sc.wealth_multiplier != null ? `${sc.wealth_multiplier}x Multiplier` : '—'}</span>
                         </div>
-                        <div className="space-y-1 text-xs">
+                        <div className="space-y-1.5 text-xs">
                           <div className="flex justify-between text-[11px]">
-                            <span className="text-slate-400">Conservative (8.5%):</span>
-                            <span className="font-semibold text-rose-300">₹{(sc.bear_case_8pct / 100000).toFixed(2)} L</span>
+                            <span className="text-slate-400">Total Invested:</span>
+                            <span className="font-semibold text-slate-300">₹{((sc.total_invested_flat || 0) / 100000).toFixed(2)} L</span>
                           </div>
                           <div className="flex justify-between text-[11px]">
                             <span className="text-slate-400">Expected Base (13.0%):</span>
                             <span className="font-bold text-emerald-400">₹{(sc.base_case_13pct / 100000).toFixed(2)} L</span>
                           </div>
+                          {sc.base_case_real_power && (
+                            <div className="flex justify-between text-[10px] bg-slate-900/60 px-2 py-0.5 rounded border border-slate-800/60">
+                              <span className="text-slate-400">Today's Purchasing Power:</span>
+                              <span className="font-medium text-amber-300">₹{(sc.base_case_real_power / 100000).toFixed(2)} L</span>
+                            </div>
+                          )}
+                          {sc.base_case_with_10pct_stepup && (
+                            <div className="flex justify-between text-[10px] bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">
+                              <span className="text-purple-300">With 10% Step-Up:</span>
+                              <span className="font-bold text-purple-200">₹{(sc.base_case_with_10pct_stepup / 100000).toFixed(2)} L</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between text-[11px] pt-0.5 border-t border-slate-800/60">
+                            <span className="text-slate-400">Conservative (8.5%):</span>
+                            <span className="font-medium text-rose-300">₹{(sc.bear_case_8pct / 100000).toFixed(2)} L</span>
+                          </div>
                           <div className="flex justify-between text-[11px]">
                             <span className="text-slate-400">Optimistic Bull (16.0%):</span>
-                            <span className="font-bold text-sky-400">₹{(sc.bull_case_16pct / 100000).toFixed(2)} L</span>
+                            <span className="font-medium text-sky-400">₹{(sc.bull_case_16pct / 100000).toFixed(2)} L</span>
                           </div>
                         </div>
                       </div>
@@ -2178,6 +2666,14 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
                             <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
                               {sip.category}
                             </span>
+                            {sip.category_rank && (
+                              <span
+                                className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-amber-500/10 text-amber-300 border-amber-500/30 flex items-center gap-1"
+                                title={sip.category_rank.rank_label}
+                              >
+                                <span>{sip.category_rank.rank_badge}</span>
+                              </span>
+                            )}
                             <span
                               className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
                                 sip.health_status === 'OUTPERFORMING'
@@ -2189,6 +2685,29 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
                             >
                               {sip.health_status || 'ANALYZED'}
                             </span>
+                            {sip.powerup_form && (
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                                  sip.powerup_form.badge === 'IN_FORM'
+                                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                    : sip.powerup_form.badge === 'ON_TRACK'
+                                    ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30'
+                                    : sip.powerup_form.badge === 'OFF_TRACK'
+                                    ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                                    : 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                                }`}
+                                title={`Power Score: ${sip.powerup_form.power_score}/100 • ${sip.powerup_form.momentum_desc}`}
+                              >
+                                <span>{sip.powerup_form.badge_emoji}</span>
+                                <span>{sip.powerup_form.badge_label}</span>
+                                <span className="text-[9px] opacity-75 font-mono">({sip.powerup_form.power_score})</span>
+                              </span>
+                            )}
+                            {sip.powerup_form?.is_drag_capital && (
+                              <span className="text-[10px] font-bold text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/25">
+                                ⚠️ Drag Capital
+                              </span>
+                            )}
                             <span className="text-[11px] text-slate-400">
                               Started: {sip.start_date} • SIP Day: {sip.sip_day}th
                             </span>
@@ -2233,11 +2752,32 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
                           <h5 className="text-base font-bold text-white mt-1">{sip.scheme_name}</h5>
                         </div>
 
-                        <div className="text-right">
-                          <span className="text-[10px] text-slate-400 uppercase block">Monthly Outflow</span>
-                          <span className="text-base font-extrabold text-white">
-                            ₹{sip.monthly_amount.toLocaleString('en-IN')}/mo
-                          </span>
+                        <div className="flex flex-col items-end gap-2">
+                          <div className="text-right">
+                            <span className="text-[10px] text-slate-400 uppercase block">Monthly Outflow</span>
+                            <span className="text-base font-extrabold text-white">
+                              ₹{sip.monthly_amount.toLocaleString('en-IN')}/mo
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => handleOpenEditModal(sip)}
+                              className="px-2.5 py-1 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/70 text-xs font-semibold flex items-center gap-1 transition-all shadow-sm"
+                              title="Edit this SIP holding details, dates, skipped months, or values"
+                            >
+                              <Pencil className="h-3 w-3 text-purple-400" />
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDeleteSip(sip.sip_id, sip.scheme_name)}
+                              disabled={actionProcessingId === sip.sip_id}
+                              className="px-2.5 py-1 rounded-lg bg-slate-800/90 hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 border border-slate-700/70 hover:border-rose-500/30 text-xs font-semibold flex items-center gap-1 transition-all shadow-sm"
+                              title="Delete this SIP holding from your portfolio"
+                            >
+                              <Trash2 className="h-3 w-3 text-rose-400" />
+                              Delete
+                            </button>
+                          </div>
                         </div>
                       </div>
 
@@ -2276,8 +2816,8 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
                             Fund Intrinsic Quality:
                           </span>
                           <p className="text-slate-400 leading-relaxed">
-                            Benchmark: <strong className="text-slate-200">{sip.benchmark_name || 'Category Index'}</strong> (~{sip.benchmark_cagr_3y || 14.5}% 3Y CAGR).
-                            Downside Capture: <strong className="text-slate-200">{sip.downside_capture ?? 92}%</strong> (lower is more defensive during market dips).
+                            Benchmark: <strong className="text-slate-200">{sip.benchmark_name || 'Category Index'}</strong> ({sip.benchmark_cagr_3y != null ? `${sip.benchmark_cagr_3y}% 3Y CAGR` : '3Y return unavailable'}).
+                            Downside Capture: <strong className="text-slate-200">{sip.downside_capture != null ? `${sip.downside_capture}%` : 'Unavailable'}</strong> (lower is more defensive during market dips).
                           </p>
                         </div>
 
@@ -2342,24 +2882,52 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
                             {sip.switch_options!.map((opt) => (
                               <div
                                 key={opt.target_scheme_code}
-                                className="bg-slate-900/90 rounded-xl border border-slate-800 p-4 space-y-3"
+                                className={`rounded-xl border p-4 space-y-3 transition-all ${
+                                  opt.is_same_amc
+                                    ? 'bg-gradient-to-b from-emerald-500/10 via-slate-900/90 to-slate-900/95 border-emerald-500/40 shadow-sm shadow-emerald-950/20'
+                                    : 'bg-slate-900/90 border-slate-800'
+                                }`}
                               >
                                 <div className="flex items-start justify-between gap-2">
                                   <div>
-                                    <div className="flex items-center gap-1.5">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      {opt.is_same_amc ? (
+                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                                          <Zap className="h-3 w-3" /> Same AMC • Free & Instant
+                                        </span>
+                                      ) : (
+                                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                                          🏦 Inter-AMC Switch
+                                        </span>
+                                      )}
                                       <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
                                         ★ {opt.crisil_rating} CRISIL
                                       </span>
                                       <span className="text-[10px] text-slate-400">{opt.category}</span>
                                     </div>
                                     <h6 className="text-xs font-bold text-white mt-1">{opt.target_scheme_name}</h6>
-                                    <p className="text-[10px] text-slate-400">{opt.fund_house}</p>
+                                    <p className="text-[10px] text-slate-400">
+                                      {opt.fund_house}
+                                      {opt.turnaround_time && (
+                                        <span className="text-cyan-400 font-medium ml-2">• Settlement: {opt.turnaround_time}</span>
+                                      )}
+                                    </p>
                                   </div>
-                                  <div className="text-right">
+                                  <div className="text-right flex-shrink-0">
                                     <span className="text-[10px] text-slate-400 uppercase">3Y CAGR</span>
                                     <p className="text-sm font-extrabold text-emerald-400">{opt.trailing_3y_cagr}%</p>
                                   </div>
                                 </div>
+
+                                {opt.amc_advantage && (
+                                  <div className={`p-2 rounded-lg text-[10px] leading-relaxed border ${
+                                    opt.is_same_amc
+                                      ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-200'
+                                      : 'bg-slate-950/60 border-slate-800 text-slate-300'
+                                  }`}>
+                                    <strong>Switch Route:</strong> {opt.amc_advantage}
+                                  </div>
+                                )}
 
                                 <div className="grid grid-cols-3 gap-2 text-[10px] bg-slate-950/70 p-2 rounded-lg border border-slate-800/80 text-center">
                                   <div>
@@ -2368,7 +2936,7 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
                                   </div>
                                   <div>
                                     <span className="text-slate-400 uppercase">Downside Cap</span>
-                                    <p className="font-bold text-teal-400">{opt.downside_capture ?? 85}%</p>
+                                    <p className="font-bold text-teal-400">{opt.downside_capture != null ? `${opt.downside_capture}%` : '—'}</p>
                                   </div>
                                   <div>
                                     <span className="text-slate-400 uppercase">Stock Overlap</span>
@@ -2434,15 +3002,64 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
                   <div key={sip.sip_id} className="bg-slate-900/60 rounded-xl border border-amber-500/20 p-4 space-y-3">
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <span className="text-[10px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                          {sip.status} • {sip.category}
-                        </span>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[10px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                            {sip.status} • {sip.category}
+                          </span>
+                          {sip.category_rank && (
+                            <span
+                              className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-amber-500/10 text-amber-300 border-amber-500/30 flex items-center gap-1"
+                              title={sip.category_rank.rank_label}
+                            >
+                              <span>{sip.category_rank.rank_badge}</span>
+                            </span>
+                          )}
+                          {sip.powerup_form && (
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                                sip.powerup_form.badge === 'IN_FORM'
+                                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                  : sip.powerup_form.badge === 'ON_TRACK'
+                                  ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30'
+                                  : sip.powerup_form.badge === 'OFF_TRACK'
+                                  ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                                  : 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                              }`}
+                              title={`Power Score: ${sip.powerup_form.power_score}/100 • ${sip.powerup_form.momentum_desc}`}
+                            >
+                              <span>{sip.powerup_form.badge_emoji}</span>
+                              <span>{sip.powerup_form.badge_label}</span>
+                              <span className="text-[9px] opacity-75 font-mono">({sip.powerup_form.power_score})</span>
+                            </span>
+                          )}
+                        </div>
                         <h5 className="text-sm font-bold text-white mt-1">{sip.scheme_name}</h5>
                         <p className="text-[11px] text-slate-400">
                           Active {sip.start_date} to {sip.end_date || 'Stopped'} ({sip.installments_count} installments)
                         </p>
                       </div>
-                      <span className="text-xs font-bold text-slate-400">₹{sip.monthly_amount.toLocaleString('en-IN')}/mo</span>
+                      <div className="flex flex-col items-end gap-1.5">
+                        <span className="text-xs font-bold text-slate-400">₹{sip.monthly_amount.toLocaleString('en-IN')}/mo</span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleOpenEditModal(sip)}
+                            className="px-2 py-0.5 rounded bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/70 text-[10px] font-semibold flex items-center gap-1 transition-all"
+                            title="Edit this closed/paused SIP holding"
+                          >
+                            <Pencil className="h-2.5 w-2.5 text-amber-400" />
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteSip(sip.sip_id, sip.scheme_name)}
+                            disabled={actionProcessingId === sip.sip_id}
+                            className="px-2 py-0.5 rounded bg-slate-800/90 hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 border border-slate-700/70 hover:border-rose-500/30 text-[10px] font-semibold flex items-center gap-1 transition-all"
+                            title="Delete this closed SIP holding from your portfolio"
+                          >
+                            <Trash2 className="h-2.5 w-2.5 text-rose-400" />
+                            Delete
+                          </button>
+                        </div>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-3 gap-2 text-center text-xs border-t border-slate-800/60 pt-2.5">
@@ -2602,35 +3219,63 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
                             {/* Switch Target Options */}
                             <div className="space-y-1.5">
                               <span className="text-[10px] font-semibold text-slate-400 block">Switch To</span>
-                              {sip.action_options.reallocate.options.map((opt) => (
-                                <button
-                                  key={opt.target_scheme_code}
-                                  type="button"
-                                  onClick={() => setReallocateSelectedTarget((prev) => ({ ...prev, [sip.sip_id]: opt.target_scheme_code }))}
-                                  className={`w-full text-left p-2.5 rounded-xl border transition-all ${
-                                    reallocateSelectedTarget[sip.sip_id] === opt.target_scheme_code
-                                      ? 'bg-purple-500/10 border-purple-500/30'
-                                      : 'bg-slate-900/40 border-slate-800/60 hover:border-purple-500/20'
-                                  }`}
-                                >
-                                  <div className="flex items-start justify-between gap-2">
-                                    <div>
-                                      <span className="text-[11px] font-bold text-white block">{opt.target_scheme_name}</span>
-                                      <span className="text-[10px] text-slate-400">{opt.fund_house} • {opt.category}</span>
+                              {sip.action_options.reallocate.options.map((opt) => {
+                                const isSelected = (reallocateSelectedTarget[sip.sip_id] || sip.action_options!.reallocate!.options[0]?.target_scheme_code) === opt.target_scheme_code;
+                                return (
+                                  <button
+                                    key={opt.target_scheme_code}
+                                    type="button"
+                                    onClick={() => setReallocateSelectedTarget((prev) => ({ ...prev, [sip.sip_id]: opt.target_scheme_code }))}
+                                    className={`w-full text-left p-2.5 rounded-xl border transition-all ${
+                                      isSelected
+                                        ? 'bg-purple-500/10 border-purple-500/40 ring-1 ring-purple-500/30'
+                                        : opt.is_same_amc
+                                        ? 'bg-emerald-500/5 border-emerald-500/25 hover:border-emerald-500/40'
+                                        : 'bg-slate-900/40 border-slate-800/60 hover:border-purple-500/20'
+                                    }`}
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div>
+                                        <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                                          {opt.is_same_amc ? (
+                                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                                              <Zap className="h-2.5 w-2.5" /> Same AMC (Free & Instant Switch)
+                                            </span>
+                                          ) : (
+                                            <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                                              🏦 Inter-AMC Switch
+                                            </span>
+                                          )}
+                                          {opt.turnaround_time && (
+                                            <span className="text-[9px] text-cyan-400/90 font-medium">
+                                              • {opt.turnaround_time}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <span className="text-[11px] font-bold text-white block">{opt.target_scheme_name}</span>
+                                        <span className="text-[10px] text-slate-400">{opt.fund_house} • {opt.category}</span>
+                                      </div>
+                                      <div className="text-right flex-shrink-0">
+                                        <span className="text-[11px] font-bold text-emerald-400 block">{opt.trailing_3y_cagr.toFixed(1)}%</span>
+                                        <span className="text-[9px] text-slate-500">3Y CAGR</span>
+                                      </div>
                                     </div>
-                                    <div className="text-right flex-shrink-0">
-                                      <span className="text-[11px] font-bold text-emerald-400 block">{opt.trailing_3y_cagr.toFixed(1)}%</span>
-                                      <span className="text-[9px] text-slate-500">3Y CAGR</span>
+                                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">★ {opt.crisil_rating}</span>
+                                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">ER: {opt.expense_ratio}%</span>
+                                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">Overlap: {opt.overlap_with_current_pct}%</span>
                                     </div>
-                                  </div>
-                                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">★ {opt.crisil_rating}</span>
-                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">ER: {opt.expense_ratio}%</span>
-                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">Overlap: {opt.overlap_with_current_pct}%</span>
-                                  </div>
-                                  <p className="text-[9px] text-purple-300/80 mt-1">{opt.comparison_advantage}</p>
-                                </button>
-                              ))}
+                                    {opt.amc_advantage && (
+                                      <p className={`text-[9px] mt-1.5 leading-relaxed ${
+                                        opt.is_same_amc ? 'text-emerald-300/90 font-medium' : 'text-slate-400'
+                                      }`}>
+                                        {opt.amc_advantage}
+                                      </p>
+                                    )}
+                                    <p className="text-[9px] text-purple-300/80 mt-0.5">{opt.comparison_advantage}</p>
+                                  </button>
+                                );
+                              })}
                             </div>
 
                             <button
@@ -2642,7 +3287,7 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
                                   sip.monthly_amount
                                 )
                               }
-                              disabled={actionProcessingId === sip.sip_id || !reallocateSelectedTarget[sip.sip_id]}
+                              disabled={actionProcessingId === sip.sip_id || (!reallocateSelectedTarget[sip.sip_id] && !sip.action_options.reallocate.options[0])}
                               className="w-full py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
                             >
                               {actionProcessingId === sip.sip_id ? (
@@ -2795,16 +3440,637 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
         </div>
       )}
 
+      {/* --------------------------------------------------------------------- */}
+      {/* 5. POWER AGE (FIRE FREEDOM) SIMULATOR & INTERACTIVE ACCELERATOR       */}
+      {/* --------------------------------------------------------------------- */}
+      {activeTab === 'power_age' && (
+        <div className="space-y-6">
+          {/* Header Banner */}
+          <div className="bg-slate-900/60 rounded-2xl border border-slate-800/80 p-5">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="px-2.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500/20 to-orange-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold tracking-wider uppercase flex items-center gap-1">
+                    <Zap className="h-3 w-3 text-amber-400" />
+                    PowerUp Money Engine • FIRE Freedom
+                  </span>
+                  <span className="text-[11px] text-slate-400">Institutional Compounding Simulation</span>
+                </div>
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  Power Age (Financial Freedom) Calculator
+                </h2>
+                <p className="text-xs text-slate-400 mt-1 max-w-3xl">
+                  Find your Power Age — the exact age when your mutual fund portfolio and SIP compounding produce enough passive income via Systematic Withdrawal (SWP) to fund your lifestyle for life without touching your principal.
+                </p>
+              </div>
+
+              {portfolioData && ((portfolioData.current_value && portfolioData.current_value > 0) || (portfolioData.total_portfolio_value && portfolioData.total_portfolio_value > 0)) && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      const portVal = Math.round(portfolioData.current_value || portfolioData.total_portfolio_value || 0);
+                      const portSip = Math.round(portfolioData.monthly_sip_run_rate || portfolioData.total_monthly_sip || 0);
+                      setPowerAgeInputCorpus(portVal);
+                      setPowerAgeInputSip(portSip);
+                      handleCalculatePowerAge({
+                        current_corpus: portVal,
+                        monthly_sip: portSip,
+                      });
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                    title="Sync inputs with your saved mutual fund portfolio and active monthly SIP"
+                  >
+                    <Coins className="h-3.5 w-3.5 text-purple-400" />
+                    Sync with Portfolio (₹{Math.round(portfolioData.current_value || portfolioData.total_portfolio_value || 0).toLocaleString('en-IN')})
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Left Column: Parameter Form & Sliders (5 cols) */}
+            <div className="lg:col-span-5 space-y-4">
+              <div className="bg-slate-900/60 rounded-2xl border border-slate-800/80 p-5 space-y-4 shadow-sm">
+                <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Sliders className="h-4 w-4 text-amber-400" />
+                    Freedom Assumptions
+                  </h3>
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold">Customizable</span>
+                </div>
+
+                {/* 1. Current Age */}
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center text-xs">
+                    <label className="text-slate-300 font-medium">Current Age</label>
+                    <span className="font-bold text-amber-400 font-mono text-sm">{powerAgeInputAge} yrs</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="18"
+                    max="65"
+                    step="1"
+                    value={powerAgeInputAge}
+                    onChange={(e) => setPowerAgeInputAge(Number(e.target.value))}
+                    className="w-full accent-amber-400 bg-slate-950 rounded-lg cursor-pointer h-1.5"
+                  />
+                  <div className="flex justify-between text-[10px] text-slate-500">
+                    <span>18</span>
+                    <span>40</span>
+                    <span>65</span>
+                  </div>
+                </div>
+
+                {/* 2. Current Portfolio Corpus */}
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center text-xs">
+                    <label className="text-slate-300 font-medium">Current Corpus (₹)</label>
+                    <span className="font-bold text-white font-mono">₹{powerAgeInputCorpus.toLocaleString('en-IN')}</span>
+                  </div>
+                  <input
+                    type="number"
+                    step="10000"
+                    min="0"
+                    value={powerAgeInputCorpus}
+                    onChange={(e) => setPowerAgeInputCorpus(Math.max(0, Number(e.target.value)))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500/50"
+                  />
+                </div>
+
+                {/* 3. Monthly SIP Outflow */}
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center text-xs">
+                    <label className="text-slate-300 font-medium">Monthly SIP (₹)</label>
+                    <span className="font-bold text-emerald-400 font-mono">₹{powerAgeInputSip.toLocaleString('en-IN')}/mo</span>
+                  </div>
+                  <input
+                    type="number"
+                    step="1000"
+                    min="0"
+                    value={powerAgeInputSip}
+                    onChange={(e) => setPowerAgeInputSip(Math.max(0, Number(e.target.value)))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500/50"
+                  />
+                </div>
+
+                {/* 4. Annual Step-Up % (PowerUp Accelerator) */}
+                <div className="space-y-1.5 p-3 rounded-xl bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/20">
+                  <div className="flex justify-between items-center text-xs">
+                    <label className="text-amber-300 font-semibold flex items-center gap-1">
+                      <Zap className="h-3 w-3 text-amber-400" />
+                      Annual SIP Step-Up (%)
+                    </label>
+                    <span className="font-bold text-amber-300 font-mono text-sm">+{powerAgeInputStepUp}% / yr</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="25"
+                    step="1"
+                    value={powerAgeInputStepUp}
+                    onChange={(e) => setPowerAgeInputStepUp(Number(e.target.value))}
+                    className="w-full accent-amber-400 bg-slate-950 rounded-lg cursor-pointer h-1.5"
+                  />
+                  <div className="flex justify-between text-[10px] text-amber-300/60">
+                    <span>0% (Flat)</span>
+                    <span>10% (Optimal)</span>
+                    <span>25% (Aggressive)</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    PowerUp Secret: Increasing your SIP by +10% annually with salary hikes can shave off 4 to 6 years to your Power Age!
+                  </p>
+                </div>
+
+                {/* 5. Expected Portfolio CAGR */}
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center text-xs">
+                    <label className="text-slate-300 font-medium">Expected Portfolio CAGR (%)</label>
+                    <span className="font-bold text-sky-400 font-mono text-sm">{powerAgeInputCagr}% p.a.</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="8"
+                    max="18"
+                    step="0.5"
+                    value={powerAgeInputCagr}
+                    onChange={(e) => setPowerAgeInputCagr(Number(e.target.value))}
+                    className="w-full accent-sky-400 bg-slate-950 rounded-lg cursor-pointer h-1.5"
+                  />
+                  <div className="flex justify-between text-[10px] text-slate-500">
+                    <span>8% (Debt/Hybrid)</span>
+                    <span>13.5% (Equity)</span>
+                    <span>18% (Small Cap)</span>
+                  </div>
+                </div>
+
+                {/* 6. Target Monthly Living Expenses Today */}
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center text-xs">
+                    <label className="text-slate-300 font-medium">Monthly Living Expenses Today (₹)</label>
+                    <span className="font-bold text-white font-mono">₹{powerAgeInputExpense.toLocaleString('en-IN')}/mo</span>
+                  </div>
+                  <input
+                    type="number"
+                    step="5000"
+                    min="10000"
+                    value={powerAgeInputExpense}
+                    onChange={(e) => setPowerAgeInputExpense(Math.max(5000, Number(e.target.value)))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500/50"
+                  />
+                </div>
+
+                {/* 7. Inflation & SWR Row */}
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center">
+                      <label className="text-slate-300 font-medium">Inflation (%)</label>
+                      <span className="font-bold text-rose-400 font-mono">{powerAgeInputInflation}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="4"
+                      max="9"
+                      step="0.5"
+                      value={powerAgeInputInflation}
+                      onChange={(e) => setPowerAgeInputInflation(Number(e.target.value))}
+                      className="w-full accent-rose-400 bg-slate-950 rounded-lg cursor-pointer h-1.5"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center">
+                      <label className="text-slate-300 font-medium">SWR (%)</label>
+                      <span className="font-bold text-purple-400 font-mono">{powerAgeInputSwr}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="3"
+                      max="6"
+                      step="0.25"
+                      value={powerAgeInputSwr}
+                      onChange={(e) => setPowerAgeInputSwr(Number(e.target.value))}
+                      className="w-full accent-purple-400 bg-slate-950 rounded-lg cursor-pointer h-1.5"
+                    />
+                  </div>
+                </div>
+
+                {/* Recalculate Button */}
+                <button
+                  type="button"
+                  onClick={() => handleCalculatePowerAge()}
+                  disabled={isLoadingPowerAge}
+                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
+                >
+                  <Zap className="h-4 w-4" />
+                  {isLoadingPowerAge ? 'Simulating Compounding Curves...' : 'Recalculate Power Age & Trajectory'}
+                </button>
+              </div>
+            </div>
+
+            {/* Right Column: Results & Interactive SVG Visualizer (7 cols) */}
+            <div className="lg:col-span-7 space-y-5">
+              {powerAgeResult ? (
+                <>
+                  {/* Hero Milestone Card */}
+                  <div className="bg-gradient-to-br from-amber-500/15 via-slate-900 to-slate-950 rounded-2xl border border-amber-500/40 p-6 space-y-4 shadow-xl">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-400 bg-amber-500/20 px-2.5 py-0.5 rounded-full border border-amber-500/30">
+                          🌟 Financial Freedom Point
+                        </span>
+                        <h3 className="text-3xl font-extrabold text-white mt-1.5 flex items-center gap-2">
+                          Power Age: <span className="text-amber-300">Age {powerAgeResult.power_age}</span>
+                          <span className="text-sm font-normal text-slate-400">({powerAgeResult.financial_freedom_year})</span>
+                        </h3>
+                      </div>
+
+                      <div className="text-right">
+                        <span className="text-xs text-slate-400 block">Countdown to Freedom</span>
+                        <span className="text-xl font-black text-emerald-400">
+                          {powerAgeResult.years_to_freedom} {powerAgeResult.years_to_freedom === 1 ? 'Year' : 'Years'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Step-Up Advantage Callout */}
+                    <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0">
+                        <Zap className="h-5 w-5 text-amber-300" />
+                      </div>
+                      <div className="text-xs text-amber-200">
+                        <p className="font-semibold">
+                          Step-Up Acceleration: <strong className="text-white">+{powerAgeResult.years_saved_by_step_up} Years Earlier</strong>
+                        </p>
+                        <p className="text-[11px] text-amber-300/80 mt-0.5">
+                          With a +{powerAgeResult.assumptions.annual_step_up_pct}% annual step-up, you reach freedom at Age {powerAgeResult.power_age} instead of Age {powerAgeResult.standard_power_age} (Flat SIP).
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* 4 Financial Freedom KPIs */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2">
+                      <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/80">
+                        <span className="text-[10px] text-slate-400 uppercase font-semibold block">Target Corpus</span>
+                        <p className="text-base font-bold text-white mt-0.5 font-mono">
+                          ₹{(powerAgeResult.corpus_at_power_age / 10000000).toFixed(2)} Cr
+                        </p>
+                        <p className="text-[10px] text-slate-500">₹{powerAgeResult.corpus_at_power_age.toLocaleString('en-IN')}</p>
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/80">
+                        <span className="text-[10px] text-slate-400 uppercase font-semibold block">Monthly Expense</span>
+                        <p className="text-base font-bold text-amber-300 mt-0.5 font-mono">
+                          ₹{Math.round(powerAgeResult.monthly_expenses_at_power_age).toLocaleString('en-IN')}
+                        </p>
+                        <p className="text-[10px] text-slate-500">Inflation-adjusted at age {powerAgeResult.power_age}</p>
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/80">
+                        <span className="text-[10px] text-slate-400 uppercase font-semibold block">SWP Passive Income</span>
+                        <p className="text-base font-bold text-emerald-400 mt-0.5 font-mono">
+                          ₹{Math.round(powerAgeResult.monthly_passive_income_swp).toLocaleString('en-IN')}
+                        </p>
+                        <p className="text-[10px] text-slate-500">At {powerAgeResult.assumptions.swr_pct}% safe withdrawal</p>
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/80">
+                        <span className="text-[10px] text-slate-400 uppercase font-semibold block">Current SIP</span>
+                        <p className="text-base font-bold text-sky-400 mt-0.5 font-mono">
+                          ₹{powerAgeResult.assumptions.monthly_sip.toLocaleString('en-IN')}/mo
+                        </p>
+                        <p className="text-[10px] text-slate-500">+{powerAgeResult.assumptions.annual_step_up_pct}% step-up/yr</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Interactive SVG Compounding & Freedom Trajectory Chart */}
+                  <div className="bg-slate-900/60 rounded-2xl border border-slate-800/80 p-5 space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
+                      <div>
+                        <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                          <TrendingUp className="h-4 w-4 text-emerald-400" />
+                          Compounding Trajectory: Growth Curves vs FIRE Threshold
+                        </h4>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Visualizes the exponential inflection point where step-up compounding overtakes expenses.
+                        </p>
+                      </div>
+
+                      {/* Chart Legend */}
+                      <div className="flex flex-wrap items-center gap-3 text-[11px]">
+                        <span className="flex items-center gap-1.5 text-emerald-400 font-semibold">
+                          <span className="w-2.5 h-1 bg-emerald-400 rounded"></span>
+                          Step-Up SIP
+                        </span>
+                        <span className="flex items-center gap-1.5 text-sky-400 font-semibold">
+                          <span className="w-2.5 h-1 bg-sky-400 rounded border-b border-dashed border-sky-400"></span>
+                          Flat SIP
+                        </span>
+                        <span className="flex items-center gap-1.5 text-amber-400 font-semibold">
+                          <span className="w-2.5 h-1 bg-amber-400 rounded"></span>
+                          FIRE Target
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* SVG Chart */}
+                    {(() => {
+                      const svgW = 760;
+                      const svgH = 280;
+                      const padL = 65;
+                      const padR = 25;
+                      const padT = 20;
+                      const padB = 30;
+                      const chartW = svgW - padL - padR;
+                      const chartH = svgH - padT - padB;
+
+                      const chartPoints = (powerAgeResult.trajectory || []).filter(
+                        (p) => p.age <= Math.min(80, Math.max(powerAgeResult.power_age + 12, 60))
+                      );
+
+                      if (chartPoints.length < 2) return null;
+
+                      const maxY = Math.max(
+                        1,
+                        ...chartPoints.map((p) => Math.max(p.accumulated_corpus, p.target_fire_corpus, p.flat_sip_corpus))
+                      ) * 1.15;
+
+                      const getX = (idx: number) => padL + (idx / (chartPoints.length - 1)) * chartW;
+                      const getY = (val: number) => padT + chartH - (Math.max(0, val) / maxY) * chartH;
+
+                      const areaAcc = `M ${getX(0)} ${padT + chartH} ` +
+                        chartPoints.map((p, idx) => `L ${getX(idx)} ${getY(p.accumulated_corpus)}`).join(' ') +
+                        ` L ${getX(chartPoints.length - 1)} ${padT + chartH} Z`;
+
+                      const lineAcc = chartPoints.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${getX(idx)} ${getY(p.accumulated_corpus)}`).join(' ');
+                      const lineFlat = chartPoints.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${getX(idx)} ${getY(p.flat_sip_corpus)}`).join(' ');
+                      const lineTarget = chartPoints.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${getX(idx)} ${getY(p.target_fire_corpus)}`).join(' ');
+
+                      const freeIdx = chartPoints.findIndex((p) => p.age === powerAgeResult.power_age);
+                      const freePoint = freeIdx >= 0 ? chartPoints[freeIdx] : null;
+
+                      // Y ticks (4 levels)
+                      const yTicks = [0, maxY * 0.33, maxY * 0.66, maxY];
+
+                      return (
+                        <div className="w-full overflow-x-auto">
+                          <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full h-auto min-w-[550px]">
+                            <defs>
+                              <linearGradient id="powerAgeAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#10b981" stopOpacity="0.35" />
+                                <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
+                              </linearGradient>
+                            </defs>
+
+                            {/* Horizontal Gridlines & Y-axis labels */}
+                            {yTicks.map((yVal, i) => {
+                              const yPos = getY(yVal);
+                              const label = yVal >= 10000000
+                                ? `₹${(yVal / 10000000).toFixed(1)} Cr`
+                                : `₹${(yVal / 100000).toFixed(0)} L`;
+                              return (
+                                <g key={i}>
+                                  <line
+                                    x1={padL}
+                                    y1={yPos}
+                                    x2={svgW - padR}
+                                    y2={yPos}
+                                    stroke="#1e293b"
+                                    strokeWidth="1"
+                                    strokeDasharray={i === 0 ? undefined : '3,3'}
+                                  />
+                                  <text
+                                    x={padL - 8}
+                                    y={yPos + 4}
+                                    textAnchor="end"
+                                    fill="#64748b"
+                                    fontSize="10"
+                                    fontFamily="monospace"
+                                  >
+                                    {label}
+                                  </text>
+                                </g>
+                              );
+                            })}
+
+                            {/* Accumulated Area */}
+                            <path d={areaAcc} fill="url(#powerAgeAreaGrad)" />
+
+                            {/* Flat SIP Line (dashed blue) */}
+                            <path
+                              d={lineFlat}
+                              fill="none"
+                              stroke="#38bdf8"
+                              strokeWidth="2"
+                              strokeDasharray="5,4"
+                            />
+
+                            {/* FIRE Target Line (amber) */}
+                            <path
+                              d={lineTarget}
+                              fill="none"
+                              stroke="#f59e0b"
+                              strokeWidth="2"
+                              strokeDasharray="4,3"
+                            />
+
+                            {/* Accumulated Line (solid emerald) */}
+                            <path
+                              d={lineAcc}
+                              fill="none"
+                              stroke="#10b981"
+                              strokeWidth="2.5"
+                            />
+
+                            {/* Power Age Vertical Beacon Marker */}
+                            {freePoint && freeIdx >= 0 && (
+                              <g>
+                                <line
+                                  x1={getX(freeIdx)}
+                                  y1={padT}
+                                  x2={getX(freeIdx)}
+                                  y2={padT + chartH}
+                                  stroke="#f59e0b"
+                                  strokeWidth="1.5"
+                                  strokeDasharray="4,4"
+                                />
+                                <circle
+                                  cx={getX(freeIdx)}
+                                  cy={getY(freePoint.accumulated_corpus)}
+                                  r="6"
+                                  fill="#10b981"
+                                  stroke="#f59e0b"
+                                  strokeWidth="2.5"
+                                />
+                                <circle
+                                  cx={getX(freeIdx)}
+                                  cy={getY(freePoint.accumulated_corpus)}
+                                  r="11"
+                                  fill="none"
+                                  stroke="#f59e0b"
+                                  strokeWidth="1"
+                                  opacity="0.6"
+                                />
+                                <text
+                                  x={getX(freeIdx)}
+                                  y={padT + 12}
+                                  textAnchor="middle"
+                                  fill="#fbbf24"
+                                  fontSize="10"
+                                  fontWeight="bold"
+                                  className="bg-slate-900"
+                                >
+                                  ⚡ Age {powerAgeResult.power_age}
+                                </text>
+                              </g>
+                            )}
+
+                            {/* X-axis ticks (Age) */}
+                            {chartPoints.map((p, idx) => {
+                              const step = Math.ceil(chartPoints.length / 8);
+                              if (idx % step !== 0 && idx !== chartPoints.length - 1 && idx !== freeIdx) return null;
+                              return (
+                                <g key={idx}>
+                                  <text
+                                    x={getX(idx)}
+                                    y={padT + chartH + 16}
+                                    textAnchor="middle"
+                                    fill={idx === freeIdx ? '#fbbf24' : '#64748b'}
+                                    fontSize="10"
+                                    fontWeight={idx === freeIdx ? 'bold' : 'normal'}
+                                  >
+                                    {p.age}
+                                  </text>
+                                </g>
+                              );
+                            })}
+                          </svg>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Bottom Explanation Footer */}
+                    <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+                      <span className="flex items-center gap-1.5">
+                        <Activity className="h-3.5 w-3.5 text-emerald-400" />
+                        Safe Withdrawal Principal Sustainability:
+                      </span>
+                      <span className="text-slate-200">
+                        At age {powerAgeResult.power_age}, corpus yields ₹{Math.round(powerAgeResult.monthly_passive_income_swp).toLocaleString('en-IN')}/mo vs expenses ₹{Math.round(powerAgeResult.monthly_expenses_at_power_age).toLocaleString('en-IN')}/mo.
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Year-by-Year Freedom Compounding Ledger */}
+                  <div className="bg-slate-900/60 rounded-2xl border border-slate-800/80 p-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <button
+                        onClick={() => setShowYearByYearTable(!showYearByYearTable)}
+                        className="flex items-center gap-2 text-xs font-bold text-slate-300 hover:text-white transition-colors cursor-pointer"
+                      >
+                        <History className="h-4 w-4 text-amber-400" />
+                        Year-by-Year Freedom Compounding Ledger ({powerAgeResult.trajectory.length} yrs)
+                        {showYearByYearTable ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                      </button>
+                      <span className="text-[11px] text-slate-400">Month-by-month compounding snapshot</span>
+                    </div>
+
+                    {showYearByYearTable && (
+                      <div className="overflow-x-auto pt-2">
+                        <table className="w-full text-left text-xs">
+                          <thead>
+                            <tr className="border-b border-slate-800 text-[10px] text-slate-400 uppercase tracking-wider">
+                              <th className="py-2">Age</th>
+                              <th className="py-2">Year</th>
+                              <th className="py-2 text-right">Step-Up Corpus</th>
+                              <th className="py-2 text-right">Flat SIP Corpus</th>
+                              <th className="py-2 text-right">Target FIRE Corpus</th>
+                              <th className="py-2 text-right">Monthly Expenses</th>
+                              <th className="py-2 text-right">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800/60 text-slate-300">
+                            {powerAgeResult.trajectory.map((p) => {
+                              const isPowerAgeRow = p.age === powerAgeResult.power_age;
+                              return (
+                                <tr
+                                  key={p.age}
+                                  className={`hover:bg-slate-800/30 ${
+                                    isPowerAgeRow ? 'bg-amber-500/10 font-bold text-amber-200' : ''
+                                  }`}
+                                >
+                                  <td className="py-2 font-mono">
+                                    {p.age} {isPowerAgeRow && '⚡'}
+                                  </td>
+                                  <td className="py-2 text-slate-400">{p.year}</td>
+                                  <td className="py-2 text-right font-mono font-semibold text-emerald-400">
+                                    ₹{p.accumulated_corpus.toLocaleString('en-IN')}
+                                  </td>
+                                  <td className="py-2 text-right font-mono text-sky-300">
+                                    ₹{p.flat_sip_corpus.toLocaleString('en-IN')}
+                                  </td>
+                                  <td className="py-2 text-right font-mono text-amber-300">
+                                    ₹{p.target_fire_corpus.toLocaleString('en-IN')}
+                                  </td>
+                                  <td className="py-2 text-right font-mono text-slate-400">
+                                    ₹{Math.round(p.monthly_expenses).toLocaleString('en-IN')}/mo
+                                  </td>
+                                  <td className="py-2 text-right">
+                                    {p.is_financially_free ? (
+                                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                                        ✓ FREE
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] text-slate-500">
+                                        Accumulating
+                                      </span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="bg-slate-900/60 rounded-2xl border border-slate-800/80 p-8 text-center space-y-3">
+                  <Zap className="h-8 w-8 text-amber-400 mx-auto animate-pulse" />
+                  <h4 className="text-base font-bold text-white">Simulating Your Power Age...</h4>
+                  <p className="text-xs text-slate-400">
+                    Calculating month-by-month compounding curves and safe withdrawal rates across your investment horizon.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal: Add SIP Schedule */}
       {showAddSipModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <PlusCircle className="h-5 w-5 text-purple-400" />
-              Add SIP Schedule & Custom Valuation
+              {editingSipId ? (
+                <>
+                  <Pencil className="h-5 w-5 text-purple-400" />
+                  Edit SIP Holding & Recorded Details
+                </>
+              ) : (
+                <>
+                  <PlusCircle className="h-5 w-5 text-purple-400" />
+                  Add SIP Schedule & Custom Valuation
+                </>
+              )}
             </h3>
             <p className="text-xs text-slate-400">
-              Add your mutual fund investment. You can optionally override total invested amount and current market value to reflect your actual holdings.
+              {editingSipId
+                ? 'Correct scheme, amount, dates, skipped months checklist, or custom invested/current valuation for this holding.'
+                : 'Add your mutual fund investment. You can optionally override total invested amount and current market value to reflect your actual holdings.'}
             </p>
             <form onSubmit={handleSaveSip} className="space-y-3">
               {/* Searchable Scheme Picker */}
@@ -2870,7 +4136,7 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
                           </div>
                         </div>
                         <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 flex-shrink-0">
-                          ★ {f.crisil_rating || 5}
+                          {f.crisil_rating != null ? `★ ${f.crisil_rating}` : 'Rating unavailable'}
                         </span>
                       </div>
                     );
@@ -3048,7 +4314,7 @@ export const MutualFundsView: React.FC<MutualFundsViewProps> = ({
                   type="submit"
                   className="px-4 py-2 rounded-xl bg-purple-500 hover:bg-purple-600 text-white text-xs font-bold"
                 >
-                  Save Schedule
+                  {editingSipId ? 'Save Changes' : 'Add to Portfolio'}
                 </button>
               </div>
             </form>

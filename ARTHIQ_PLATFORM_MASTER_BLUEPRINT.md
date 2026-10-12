@@ -1,172 +1,157 @@
 # ArthIQ Platform Master Architecture & Implementation Blueprint
-> **The Definitive Engineering and Quantitative Specification for Building the Platform from Scratch**
-> **Platform Name:** ArthIQ (`arthiq`) | **Version:** V0.4 Institutional Reference
-> **Universe:** Indian Equities (NSE/BSE, Nifty 500 Universe) | **Cadence:** Quarterly Rebalance (Earnings-Cycle Aligned)
-> **Author/Owner:** Quantitative Investment Decision Engine Specification
+> **The Definitive Engineering and Quantitative Specification for Building the Platform from Scratch**  
+> **Platform Name:** ArthIQ (`arthiq`) | **Version:** V0.5 Unified Multi-Asset Institutional Reference  
+> **Universe:** Indian Listed Equities (NSE/BSE Nifty 500) & Indian Mutual Funds (AMFI Scheme Universe)  
+> **Cadence:** Quarterly Rebalance (Equities) & Monthly Execution Tracking (SIPs / Mutual Funds)  
+> **Author/Owner:** Quantitative Investment Decision Engine Architecture
 
 ---
 
 ## Table of Contents
-1. [Executive Summary & System Vision](#1-executive-summary--system-vision)
-2. [High-Level System Architecture & Component Interaction](#2-high-level-system-architecture--component-interaction)
-3. [Data Architecture & Zero-Lookahead Point-in-Time (PIT) Engine](#3-data-architecture--zero-lookahead-point-in-time-pit-engine)
-   - 3.1 Data Sources & Ingestion Contracts
-   - 3.2 PIT Invariant Theory & Anti-Lookahead Safeguards
-   - 3.3 Complete Relational Database Schema (SQLite WAL & PostgreSQL DDL)
-   - 3.4 Data Access Abstraction Layer (`PointInTimeDataAccess`)
-4. [Quantitative Factor & Multi-Stage Scoring Engines](#4-quantitative-factor--multi-stage-scoring-engines)
-   - 4.1 Universe Screening & Liquidity Filtering (Stage 0)
-   - 4.2 Decoupled Two-Level Valuation & Business Scoring (V0.2 Engine)
-   - 4.3 Sector Archetypes & Sector-Relative Normalization
-   - 4.4 Scenario Analysis & Probabilistic Expected Returns
+1. [Executive Summary & Platform Scope](#1-executive-summary--platform-scope)
+2. [Unified System Architecture & Data Flow](#2-unified-system-architecture--data-flow)
+3. [Dual-Engine Persistence & Zero-Lookahead Data Architecture](#3-dual-engine-persistence--zero-lookahead-data-architecture)
+   - 3.1 Dual Database Engine: SQLite WAL & Neon PostgreSQL Adaptation
+   - 3.2 Complete Relational Database Schema (All 14 Tables & Indexes)
+   - 3.3 Zero-Lookahead Point-in-Time (PIT) Data Access Layer (`PointInTimeDataAccess`)
+   - 3.4 AMFI Mutual Fund Ingestion & Historical NAV Engine
+4. [Equities Quantitative Factor & Scoring Engines](#4-equities-quantitative-factor--scoring-engines)
+   - 4.1 Stage 0: Universe Screening & Liquidity Filtering
+   - 4.2 Decoupled Two-Level Architecture: Business Score vs. Investment Score
+   - 4.3 Sector Archetypes & Cross-Sectional Normalization
+   - 4.4 Scenario Analysis & Probabilistic Return Trajectories
    - 4.5 Event Intelligence & Dynamic Factor Deltas
-5. [Portfolio Optimization & Real-World Execution Engine](#5-portfolio-optimization--real-world-execution-engine)
-   - 5.1 Hierarchical Risk Parity (HRP) Mathematical Formulation
-   - 5.2 Quasi-Diagonalization & Recursive Bisection Algorithms
-   - 5.3 Hard Risk Caps & Dynamic Investor Profiles
-   - 5.4 Whole-Share Allocation & Indian Execution Cost Friction (STT, Stamp Duty, Slippage)
-6. [Machine Learning & Predictive Intelligence Engine (V0.3 / V0.3.1 / V0.4)](#6-machine-learning--predictive-intelligence-engine-v03--v031--v04)
+   - 4.6 The 2x2 Investment Matrix Quadrants
+5. [Equities Portfolio Optimization & Indian Execution Friction](#5-equities-portfolio-optimization--indian-execution-friction)
+   - 5.1 Hierarchical Risk Parity (HRP) Mathematical Derivation
+   - 5.2 Tree Dendrogram Clustering & Quasi-Diagonalization
+   - 5.3 Recursive Bisection & Investor Profile Caps (Conservative, Moderate, Aggressive)
+   - 5.4 Whole-Share Integer Allocation & Real-World Indian Friction (66.5 bps)
+6. [Equities Machine Learning Pipeline & The V0.3.1 Diagnostic Discovery](#6-equities-machine-learning-pipeline--the-v031-diagnostic-discovery)
    - 6.1 The 24-Dimensional Point-in-Time Feature Store
-   - 6.2 Target Formulation & Labeling Invariants
-   - 6.3 Expanding Walk-Forward Cross-Validation Architecture
-   - 6.4 Model Architecture & Probability Calibration (Platt Scaling vs Isotonic)
-   - 6.5 The V0.3.1 Diagnostic Breakthrough: Empirical Falsification of Standalone ML
-   - 6.6 Cross-Sectional Quintile Inversion & 1-P Reverse Signal Diagnostic
-   - 6.7 Feature Group Ablation & The Fundamentals-Only Alpha Discovery
-   - 6.8 The 8 Institutional Model Promotion Gates
-7. [The V0.4 Decision Intelligence Framework](#7-the-v04-decision-intelligence-framework)
+   - 6.2 Target Formulation & Expanding Walk-Forward Sequence
+   - 6.3 Boosted Tree Calibration (Platt Scaling vs Isotonic)
+   - 6.4 The V0.3.1 Diagnostic Revelation: Standalone ML Falsification
+   - 6.5 Systematic Signal Inversion & Quintile Spread ($Q1 > Q5$)
+   - 6.6 Feature Group Ablation & The Fundamentals-Only Alpha Discovery
+   - 6.7 The 8 Institutional Model Promotion Gates
+7. [The V0.4 Decision Intelligence Architecture](#7-the-v04-decision-intelligence-architecture)
    - 7.1 Normalized Additive Decision Function ($\text{ArthScore}$)
    - 7.2 Cross-Pillar Signal Agreement Mechanism
    - 7.3 Candidate Signal Zoo (Candidates 1, 2, and 3)
    - 7.4 Multi-Horizon Decay Analysis (30D to 252D)
-   - 7.5 Shadow Portfolio Tracking & Real-Time Slippage Monitoring
-8. [Backend API & Service Infrastructure](#8-backend-api--service-infrastructure)
-   - 8.1 Technology Stack & Directory Structure
-   - 8.2 Security, Cryptographic Authentication & RBAC
-   - 8.3 RESTful Endpoint Specifications & Schemas
-   - 8.4 Automated Plain-English Rationale Generation & PDF Reporting
-9. [Frontend Client Architecture (React 19 + TypeScript + Tailwind CSS)](#9-frontend-client-architecture-react-19--typescript--tailwind-css)
-   - 9.1 Obsidian Dark Design System & Visual Tokens
-   - 9.2 Real-Time Navigation, IST Monospace Clock & Live Ticker Marquee
-   - 9.3 The Five Core Analytical Modules (Stock Ideas, Lens, Vault, Pulse, Edge)
-   - 9.4 State Management, Session Lifecycle & API Client
-10. [Walk-Forward Backtesting & Performance Analytics](#10-walk-forward-backtesting--performance-analytics)
-    - 10.1 Walk-Forward Simulation Loop
-    - 10.2 Mathematical Metric Formulations (CAGR, Sharpe, Sortino, Calmar, Turnover)
-    - 10.3 Transaction Fee Sensitivity Ladder
-11. [Monitoring, Data Quality & Operational Runbooks](#11-monitoring-data-quality--operational-runbooks)
-    - 11.1 Daily Data Quality Invariant Checks
-    - 11.2 Weekly Point-in-Time Audit Engine
-    - 11.3 Population Stability Index (PSI) & Concept Drift Detection
-    - 11.4 Cron Automation Schedules
-12. [End-to-End Build Blueprint: From Zero to Production](#12-end-to-end-build-blueprint-from-zero-to-production)
-    - Step 1: Directory Setup & Python Virtual Environment
-    - Step 2: Database Migration & Static Universe Seeding
-    - Step 3: Core Quantitative & Data Access Implementation
-    - Step 4: Machine Learning Pipeline & Diagnostics Suite
-    - Step 5: FastAPI REST Backend Implementation
-    - Step 6: Vite + React 19 Frontend Deployment
-    - Step 7: Verification Suite Execution
+   - 7.5 Shadow Portfolio Execution & Real-Time Tracking
+8. [Mutual Fund Intelligence, Analytics & Advisory Engine](#8-mutual-fund-intelligence-analytics--advisory-engine)
+   - 8.1 Quantitative Performance Metrics (CAGR, Rolling Returns Distributions)
+   - 8.2 Risk-Adjusted Ratios (Sharpe, Sortino, Treynor, Jensen's Alpha, Beta, Capture Ratios)
+   - 8.3 Robust Cashflow-Based XIRR Solver (Newton-Raphson & Bisection)
+   - 8.4 Cross-Fund Portfolio Stock Overlap Matrix
+   - 8.5 Goal-Based Advisory & Asset Allocation Profiling
+   - 8.6 SIP Wealth Trajectory Compounder with Step-Up Modeling
+   - 8.7 Capital Gains Tax Harvesting Analyzer (Finance Act 2024 LTCG/STCG)
+9. [Multi-Asset Portfolio Health & Sizing Blotter](#9-multi-asset-portfolio-health--sizing-blotter)
+   - 9.1 Position-Level Health Diagnosis (BUY MORE, HOLD, TRIM, EXIT SELL)
+   - 9.2 Capital Delta & Share Adjustments
+   - 9.3 Portfolio Aggregate Factor Scores & Multi-Horizon Projections (1Y, 3Y, 5Y)
+10. [Backend REST API, Security & Distributed Infrastructure](#10-backend-rest-api-security--distributed-infrastructure)
+    - 10.1 FastAPI Architecture & Directory Structure
+    - 10.2 Cryptographic Authentication (PBKDF2-SHA256 & RFC 7519 JWT)
+    - 10.3 Complete API Endpoint Catalog (Equities + Mutual Funds + Health)
+    - 10.4 Automated Plain-English Rationale Generation & PDF Reports
+11. [Modern Obsidian Frontend Client (React 19 + TypeScript + Vite)](#11-modern-obsidian-frontend-client-react-19--typescript--vite)
+    - 11.1 Obsidian Dark Design System & Glassmorphism Tokens
+    - 11.2 Live IST Monospace Clock & Ticker Tape Marquee
+    - 11.3 Analytical Modules (Stock Ideas, Lens, Vault, Pulse, Edge, Mutual Funds, Health)
+    - 11.4 Interactive Visualizations (Charts, Dials, Radar, Donut, Ladders)
+12. [Walk-Forward Backtesting, Audits & Operational Runbooks](#12-walk-forward-backtesting-audits--operational-runbooks)
+    - 12.1 Walk-Forward Simulation Engine & Performance Metrics
+    - 12.2 Daily Data Quality Invariants & Weekly PIT Audits
+    - 12.3 Automated Cron Schedules
+13. [End-to-End Build Blueprint: From Zero to Full Deployment](#13-end-to-end-build-blueprint-from-zero-to-full-deployment)
 
 ---
 
-## 1. Executive Summary & System Vision
+## 1. Executive Summary & Platform Scope
 
-**ArthIQ** is an institutional-grade, personal quantitative investment decision-support engine specifically designed for Indian equities (NSE/BSE Nifty 500 universe). The platform systematically replaces manual, emotionally biased retail workflows—such as browsing multiple financial portals, unstructured annual report skimming, and naive heuristic portfolio construction—with a mathematically rigorous, auditable, and automated decision-making engine.
+**ArthIQ** is an institutional-grade, multi-asset quantitative investment decision-support engine engineered specifically for Indian equities (NSE/BSE Nifty 500 universe) and Indian Mutual Funds (AMFI universe). The platform systematically transforms unstructured financial disclosures, price feeds, macro indicators, and mutual fund portfolio disclosures into deterministic, risk-managed investment portfolios with plain-English rationales.
 
-### Core Mission & Philosophies
-1. **Decision Support, Not Black-Box Automation:** The system produces evidence-backed, mathematically grounded buy/sell/hold target allocations alongside plain-English investment rationales. The user retains manual execution authority via their broker app (Zerodha Kite, Groww, Upstox), preventing runaway trading errors.
-2. **Strict Zero-Lookahead Point-in-Time (PIT) Integrity:** Backtests and live inference share the exact same code path. Financial data, restatements, and constituent lists are strictly queried as of what was publicly known on the rebalance date.
-3. **Decoupled Quality vs. Price Valuation:** Enterprise durability (Business Quality) is evaluated independently from market price (Valuation Multiple) before synthesis into an Investment Score.
-4. **Institutional Risk-First Portfolio Construction:** Allocations are generated using Hierarchical Risk Parity (HRP) with strict mathematical caps (max 25% single stock, max 40% sector) and real-world Indian transaction cost modeling (STT, stamp duty, brokerage, slippage).
-5. **Empirical Discipline in Machine Learning:** Standalone ML predictions are never accepted blindly. Extensive diagnostic audits (Spearman Rank IC, Information Ratios, monotonic quintile spreads $Q5 > Q1$, and frozen out-of-sample partitions) govern model promotion.
+### Core Deliverables
+1. **Direct Equity Decision Support:** Quarterly factor-ranked stock allocations using decoupled Business Quality and Valuation scoring, optimized via Hierarchical Risk Parity (HRP) with strict 25% single-stock and 40% sector caps.
+2. **Mutual Fund & SIP Advisory:** Complete AMFI scheme database, rolling return distributions, risk-adjusted ratios, cross-fund stock overlap matrices, goal-based portfolio generation, XIRR performance tracking, and capital gains tax harvesting under the Indian Finance Act 2024.
+3. **Multi-Asset Portfolio Health Engine:** Real-time health diagnostic of the user's actual broker and mutual fund holdings, generating position-level rebalance instructions (BUY MORE / HOLD / TRIM / EXIT SELL).
+4. **Empirically Audited Predictive ML:** Fully tested expanding walk-forward ML models governed by 8 institutional promotion gates, protecting the user from overfit black-box predictions.
 
 ---
 
-## 2. High-Level System Architecture & Component Interaction
-
-The platform follows a layered, decoupled service architecture:
+## 2. Unified System Architecture & Data Flow
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────────────────┐
-│                                    FRONTEND LAYER                                       │
-│                       React 19 + TypeScript + Vite 6 + Tailwind CSS                     │
-│   ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌─────────┐   │
-│   │  Stock Ideas  │ │     Lens      │ │     Vault     │ │     Pulse     │ │  Edge   │   │
-│   │  (QuickPicks) │ │ (Diagnostics) │ │  (HRP Alloc)  │ │   (Thematic)  │ │ (Events)│   │
-│   └───────▲───────┘ └───────▲───────┘ └───────▲───────┘ └───────▲───────┘ └────▲────┘   │
-└───────────┼─────────────────┼─────────────────┼─────────────────┼──────────────┼────────┘
-            │                 │                 │                 │              │
-            └─────────────────┴────────┬────────┴─────────────────┴──────────────┘
-                                       │ Bearer Token HTTP/REST (JSON)
-┌──────────────────────────────────────▼──────────────────────────────────────────────────┐
-│                                   FASTAPI BACKEND SERVICE                               │
-│                         Authentication / Pydantic v2 Serialization                       │
-│  ┌───────────────────────┐ ┌───────────────────────┐ ┌───────────────────────────────┐  │
-│  │   Scoring Engine V2   │ │     HRP Optimizer     │ │      ML Alpha Service         │  │
-│  │  (BQS, Growth, Val,   │ │ (Clustering, Bisection│ │ (Expanding Walk-Forward,      │  │
-│  │   Risk, Matrix Quad)  │ │  25% Stock / 40% Sec) │ │  Calibrated Boosters, Platt)  │  │
-│  └───────────▲───────────┘ └───────────▲───────────┘ └───────────────▲───────────────┘  │
-│              │                         │                             │                  │
-│              └─────────────────────────┼─────────────────────────────┘                  │
-│                                        │                                                │
-│                        ┌───────────────▼───────────────┐                                │
-│                        │    PointInTimeDataAccess      │                                │
-│                        │ (Zero-Lookahead Anti-Leakage) │                                │
-│                        └───────────────▲───────────────┘                                │
-└────────────────────────────────────────┼────────────────────────────────────────────────┘
-                                         │ Direct SQL Parameterized Queries
-┌────────────────────────────────────────▼────────────────────────────────────────────────┐
-│                                DATA STORAGE & PERSISTENCE                               │
-│                 SQLite 3 (WAL Mode, High Concurrency) / PostgreSQL Core                 │
-│  ┌─────────────────────────┐ ┌─────────────────────────┐ ┌───────────────────────────┐  │
-│  │  daily_prices           │ │  fundamentals_quarterly │ │ index_constituents_history│  │
-│  │  (OHLCV, Adj Close)     │ │  (disclosed_at stamped) │ │ (Historical Nifty 500 PIT)│  │
-│  └─────────────────────────┘ └─────────────────────────┘ └───────────────────────────┘  │
-│  ┌─────────────────────────┐ ┌─────────────────────────┐ ┌───────────────────────────┐  │
-│  │  corporate_events       │ │  news_sentiment         │ │ shadow_portfolio_records  │  │
-│  │  (Filings, Board Meets) │ │  (FinBERT Scores)       │ │ (Execution & Drift Logs)  │  │
-│  └─────────────────────────┘ └─────────────────────────┘ └───────────────────────────┘  │
-└────────────────────────────────────────▲────────────────────────────────────────────────┘
-                                         │ Idempotent Ingestion Scripts (cron / event)
-┌────────────────────────────────────────┴────────────────────────────────────────────────┐
-│                              EXTERNAL DATA INGESTION FEEDS                              │
-│   NSE Bhavcopy (EOD)  │  BSE Bhavcopy  │  Yahoo Finance  │  Macro Feeds (VIX, Crude)    │
-│   NSE Filings RSS     │  Financial Media Scraping        │  Static Indices Seed CSVs    │
-└─────────────────────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                                    FRONTEND LAYER                                      │
+│                React 19 + TypeScript + Vite 6 + Tailwind CSS (Obsidian Glass)          │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐  │
+│  │ Stock Ideas  │ │     Lens     │ │    Vault     │ │ Mutual Funds │ │  Portfolio   │  │
+│  │ (QuickPicks) │ │ (Diagnostics)│ │ (HRP Alloc)  │ │ (SIP & XIRR) │ │ Health Lab   │  │
+│  └──────▲───────┘ └──────▲───────┘ └──────▲───────┘ └──────▲───────┘ └──────▲───────┘  │
+└─────────┼────────────────┼────────────────┼────────────────┼────────────────┼──────────┘
+          │                │                │                │                │
+          └────────────────┴────────┬───────┴────────────────┴────────────────┘
+                                    │ Bearer Token HTTP/REST (JSON)
+┌───────────────────────────────────▼────────────────────────────────────────────────────┐
+│                                FASTAPI BACKEND SERVICE                                 │
+│  ┌────────────────────────┐ ┌────────────────────────┐ ┌────────────────────────────┐  │
+│  │  Equities Quant Engine │ │  Mutual Fund Engine    │ │   Portfolio Health Engine  │  │
+│  │  • Business Score (BQS)│ │  • AMFI NAV & Rolling  │ │   • Position Actions       │  │
+│  │  • Valuation & Risk V2 │ │  • Overlap Matrix      │ │   • Rebalance Shares       │  │
+│  │  • HRP Optimizer & Caps│ │  • XIRR Solver & Taxes │ │   • Multi-Horizon Forecast │  │
+│  └───────────▲────────────┘ └───────────▲────────────┘ └─────────────▲──────────────┘  │
+│              │                          │                            │                 │
+│              └──────────────────────────┼────────────────────────────┘                 │
+│                                         │                                              │
+│                        ┌────────────────▼────────────────┐                             │
+│                        │   PointInTimeDataAccess & Engine│                             │
+│                        │   (SQLite WAL / Neon PostgreSQL)│                             │
+│                        └────────────────▲────────────────┘                             │
+└─────────────────────────────────────────┼──────────────────────────────────────────────┘
+                                          │ Parameterized Dialect-Adapted SQL
+┌─────────────────────────────────────────▼──────────────────────────────────────────────┐
+│                              PERSISTENCE & DATA STORAGE                                │
+│       Local: SQLite 3 (WAL Mode, High Concurrency)  │  Cloud: Neon PostgreSQL          │
+│  ┌─────────────────────────┐ ┌─────────────────────────┐ ┌──────────────────────────┐  │
+│  │ daily_prices (OHLCV)    │ │ fundamentals_quarterly  │ │ index_constituents_hist  │  │
+│  ├─────────────────────────┤ ├─────────────────────────┤ ├──────────────────────────┤  │
+│  │ mf_schemes & nav_history│ │ mf_holdings (Portfolios)│ │ user_mf_portfolios & tx  │  │
+│  ├─────────────────────────┤ ├─────────────────────────┤ ├──────────────────────────┤  │
+│  │ users & user_portfolios │ │ model_predictions (ML)  │ │ shadow_portfolio_records │  │
+│  └─────────────────────────┘ └─────────────────────────┘ └──────────────────────────┘  │
+└─────────────────────────────────────────▲──────────────────────────────────────────────┘
+                                          │ Scheduled Ingestion Jobs
+┌─────────────────────────────────────────┴──────────────────────────────────────────────┐
+│                             EXTERNAL DATA FEEDS & SOURCES                              │
+│   NSE Bhavcopy (EOD)  │  BSE Bhavcopy  │  AMFI NAV Feed (Daily)  │  Yahoo Finance      │
+│   Exchange Filings    │  News RSS      │  Macro Indicators (VIX) │  Static Seed Data   │
+└────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 3. Data Architecture & Zero-Lookahead Point-in-Time (PIT) Engine
+## 3. Dual-Engine Persistence & Zero-Lookahead Data Architecture
 
-### 3.1 Data Sources & Ingestion Contracts
+### 3.1 Dual Database Engine: SQLite WAL & Neon PostgreSQL Adaptation
 
-| Source | Role | Update Cadence | Storage Mechanism | Failure Policy |
-| :--- | :--- | :--- | :--- | :--- |
-| **NSE Bhavcopy** | Official ground-truth daily OHLCV for NSE listed equities | Daily at 18:30 IST | Raw CSV parsed into `daily_prices` | Strict fallback to yfinance if exchange archive unavailable |
-| **BSE Bhavcopy** | Auxiliary OHLCV for dual-listed/BSE securities | Daily at 19:00 IST | Parsed into `daily_prices` | Skip if symbol exists on NSE |
-| **yfinance Prices** | Secondary redundancy feed & historical gap filling | Weekly or on-demand | Normalized into `daily_prices` | Rate-limited batching (max 5 req/sec) with exponential backoff |
-| **Corporate Filings (NSE/BSE)** | Financial disclosures (Revenue, PAT, Net Worth, Debt) | Event-driven (Results season) | Stored in `fundamentals_quarterly` with disclosure date | Flag unannounced quarters; never impute future values |
-| **Macroeconomic Feeds** | India VIX, USD/INR, 10-Yr G-Sec Yield, Brent Crude | Daily at 20:00 IST | Appended to `daily_prices` as synthetic symbols | Use latest available business day close |
-| **Financial News RSS** | Curated headlines (ET, Moneycontrol, Livemint) | 4x daily (09:00, 13:00, 17:00, 21:00 IST) | Raw headlines into `news_sentiment` | Fallback to VADER baseline if NLP model times out |
+The persistence layer (`invst/backend/src/invst/db/engine.py`) provides unified connectivity across local and cloud environments:
+- **Local Development / Pytest:** Zero-configuration SQLite 3 with Write-Ahead Logging (`PRAGMA journal_mode = WAL`) and sub-millisecond query performance.
+- **Production / Cloud:** Neon Serverless PostgreSQL with connection pooling and SSL encryption.
+- **Transparent Dialect Translation:**
+  - Converts SQLite `?` parameter placeholders to PostgreSQL `%s`.
+  - Replaces `INTEGER PRIMARY KEY AUTOINCREMENT` with `SERIAL PRIMARY KEY`.
+  - Translates `INSERT OR REPLACE INTO table (...)` to PostgreSQL `INSERT INTO table (...) ON CONFLICT (pk_columns) DO UPDATE SET ...`.
+  - Implements a dict-accessible row mapper compatible with `sqlite3.Row` across both database drivers.
 
-### 3.2 PIT Invariant Theory & Anti-Lookahead Safeguards
-
-A quantitative backtest that uses restated earnings or unannounced quarters to determine positions in 2018 is corrupted. ArthIQ enforces three unbreakable mathematical invariants:
-1. **The Disclosure Barrier ($t_{\text{disclosed}} \le t_{\text{asof}}$):** Financial statements are only visible on or after the exact calendar day they were formally submitted to the exchange.
-2. **The Effective Date Invariant:** A stock cannot be screened into the universe unless it was an active constituent of the Nifty 500 on the simulated date $t_{\text{asof}}$. Survivorship bias is eliminated by querying `index_constituents_history`.
-3. **Execution Lag ($t_{\text{trade}} > t_{\text{asof}}$):** Portfolio rebalance decisions computed on the close of day $t_{\text{asof}}$ are executed at the **open price of day $t+1$**. Same-day closing execution is strictly prohibited.
-
-### 3.3 Complete Relational Database Schema (SQLite WAL & PostgreSQL DDL)
+### 3.2 Complete Relational Database Schema (All 14 Tables & Indexes)
 
 ```sql
--- Pragmas for SQLite High Concurrency Performance
-PRAGMA journal_mode = WAL;
-PRAGMA synchronous = NORMAL;
-PRAGMA foreign_keys = ON;
-
--- 1. Point-in-Time Index Constituents
+-- 1. Point-in-Time Index Constituents History
 CREATE TABLE IF NOT EXISTS index_constituents_history (
     effective_date   DATE    NOT NULL,
     symbol           TEXT    NOT NULL,
@@ -212,7 +197,7 @@ CREATE TABLE IF NOT EXISTS corporate_events (
     event_id         TEXT    PRIMARY KEY,
     symbol           TEXT    NOT NULL,
     disclosed_at     TIMESTAMP NOT NULL,
-    event_type       TEXT    NOT NULL, -- 'EARNINGS_BEAT', 'ORDER_WIN', 'MANAGEMENT_CHANGE'
+    event_type       TEXT    NOT NULL,
     headline         TEXT    NOT NULL,
     details_json     TEXT,
     impact_score     REAL    DEFAULT 0.0,
@@ -227,7 +212,7 @@ CREATE TABLE IF NOT EXISTS news_sentiment (
     published_at     DATE    NOT NULL,
     headline         TEXT    NOT NULL,
     source           TEXT,
-    sentiment_score  REAL,    -- [-1.0, +1.0]
+    sentiment_score  REAL,
     model_version    TEXT,
     ingested_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -250,7 +235,7 @@ CREATE TABLE IF NOT EXISTS portfolio_history (
     asof_date        DATE    NOT NULL,
     symbol           TEXT    NOT NULL,
     target_weight    REAL    NOT NULL,
-    action           TEXT    NOT NULL, -- 'BUY', 'SELL', 'HOLD'
+    action           TEXT    NOT NULL,
     shares_target    INTEGER NOT NULL,
     rationale_text   TEXT,
     executed         INTEGER DEFAULT 0,
@@ -285,7 +270,7 @@ CREATE TABLE IF NOT EXISTS shadow_portfolio_records (
     execution_status TEXT    DEFAULT 'FILLED'
 );
 
--- 10. Multi-User Authentication & Profiles
+-- 10. Multi-User Authentication & Equities Portfolios
 CREATE TABLE IF NOT EXISTS users (
     id               TEXT PRIMARY KEY,
     email            TEXT UNIQUE NOT NULL,
@@ -305,301 +290,267 @@ CREATE TABLE IF NOT EXISTS user_portfolios (
     current_cash     REAL NOT NULL DEFAULT 100000.0,
     created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 11. Mutual Fund Schemes Master
+CREATE TABLE IF NOT EXISTS mf_schemes (
+    scheme_code      INTEGER PRIMARY KEY,
+    isin             TEXT,
+    scheme_name      TEXT    NOT NULL,
+    fund_house       TEXT    NOT NULL,
+    category         TEXT    NOT NULL,
+    plan_type        TEXT    NOT NULL DEFAULT 'Direct',
+    option_type      TEXT    NOT NULL DEFAULT 'Growth',
+    benchmark_index  TEXT    DEFAULT 'Nifty 500 TRI',
+    expense_ratio    REAL,
+    aum_cr           REAL,
+    fund_manager     TEXT,
+    crisil_rating    INTEGER,
+    risk_level       TEXT    DEFAULT 'Very High',
+    inception_date   DATE,
+    created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_mf_category ON mf_schemes(category);
+CREATE INDEX IF NOT EXISTS idx_mf_fund_house ON mf_schemes(fund_house);
+CREATE INDEX IF NOT EXISTS idx_mf_isin ON mf_schemes(isin);
+
+-- 12. Mutual Fund Daily NAV History
+CREATE TABLE IF NOT EXISTS mf_nav_history (
+    scheme_code      INTEGER NOT NULL,
+    nav_date         DATE    NOT NULL,
+    nav              REAL    NOT NULL,
+    PRIMARY KEY (scheme_code, nav_date),
+    FOREIGN KEY (scheme_code) REFERENCES mf_schemes(scheme_code) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_mf_nav_scheme_date ON mf_nav_history(scheme_code, nav_date DESC);
+
+-- 13. Scheme Portfolio Holdings (Monthly Disclosures)
+CREATE TABLE IF NOT EXISTS mf_holdings (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    scheme_code      INTEGER NOT NULL,
+    as_of_date       DATE    NOT NULL,
+    company_name     TEXT    NOT NULL,
+    symbol           TEXT,
+    isin             TEXT,
+    sector           TEXT,
+    weight_pct       REAL    NOT NULL,
+    FOREIGN KEY (scheme_code) REFERENCES mf_schemes(scheme_code) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_mf_holdings_scheme ON mf_holdings(scheme_code, as_of_date);
+CREATE INDEX IF NOT EXISTS idx_mf_holdings_symbol ON mf_holdings(symbol);
+
+-- 14. User Mutual Fund Portfolios & SIP Schedules
+CREATE TABLE IF NOT EXISTS user_mf_portfolios (
+    id               TEXT    PRIMARY KEY,
+    user_id          INTEGER NOT NULL,
+    name             TEXT    NOT NULL DEFAULT 'My MF Portfolio',
+    notes            TEXT,
+    last_saved_at    TIMESTAMP,
+    created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS mf_sip_schedules (
+    id               TEXT    PRIMARY KEY,
+    portfolio_id     TEXT    NOT NULL,
+    scheme_code      INTEGER NOT NULL,
+    folio_number     TEXT,
+    amount           REAL    NOT NULL,
+    frequency        TEXT    DEFAULT 'MONTHLY',
+    sip_day          INTEGER DEFAULT 5,
+    start_date       DATE    NOT NULL,
+    end_date         DATE,
+    status           TEXT    NOT NULL DEFAULT 'ACTIVE',
+    step_up_pct      REAL    DEFAULT 0.0,
+    created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (portfolio_id) REFERENCES user_mf_portfolios(id) ON DELETE CASCADE,
+    FOREIGN KEY (scheme_code) REFERENCES mf_schemes(scheme_code)
+);
+
+CREATE TABLE IF NOT EXISTS mf_transactions (
+    id               TEXT    PRIMARY KEY,
+    portfolio_id     TEXT    NOT NULL,
+    sip_id           TEXT,
+    scheme_code      INTEGER NOT NULL,
+    tx_date          DATE    NOT NULL,
+    tx_type          TEXT    NOT NULL, -- 'BUY', 'SELL', 'SIP'
+    amount           REAL    NOT NULL,
+    units            REAL    NOT NULL,
+    nav              REAL    NOT NULL,
+    notes            TEXT,
+    created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (portfolio_id) REFERENCES user_mf_portfolios(id) ON DELETE CASCADE,
+    FOREIGN KEY (sip_id) REFERENCES mf_sip_schedules(id) ON DELETE SET NULL,
+    FOREIGN KEY (scheme_code) REFERENCES mf_schemes(scheme_code)
+);
+
+CREATE TABLE IF NOT EXISTS mf_sip_checkins (
+    id               TEXT    PRIMARY KEY,
+    portfolio_id     TEXT    NOT NULL,
+    sip_id           TEXT    NOT NULL,
+    scheme_code      INTEGER NOT NULL,
+    due_date         DATE    NOT NULL,
+    status           TEXT    NOT NULL, -- 'PAID', 'SKIPPED', 'PENDING'
+    confirmed_date   DATE,
+    amount           REAL    NOT NULL,
+    notes            TEXT,
+    created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (portfolio_id) REFERENCES user_mf_portfolios(id) ON DELETE CASCADE,
+    FOREIGN KEY (sip_id) REFERENCES mf_sip_schedules(id) ON DELETE CASCADE
+);
 ```
 
-### 3.4 Data Access Abstraction Layer (`PointInTimeDataAccess`)
+### 3.3 Zero-Lookahead Point-in-Time (PIT) Data Access Layer
 
-Every query executed during scoring, backtesting, or ML training **must** pass through `PointInTimeDataAccess`. Direct database queries that could leak future rows are rejected by code invariants:
+The `PointInTimeDataAccess` class guarantees zero lookahead leakage by clamping all time-series queries to `self.asof`:
+- `get_price(symbol, on_or_before)` queries strictly `trade_date <= asof`.
+- `get_fundamental(symbol, metric)` queries strictly `disclosed_at <= asof`, ordering by `disclosed_at DESC, period_end DESC LIMIT 1`.
+- `get_universe()` queries `index_constituents_history` for stocks whose effective membership date preceded the simulated rebalance.
 
-```python
-# src/invst/data_access.py
-from datetime import date
-from typing import Optional, List, Dict
-import sqlite3
+### 3.4 AMFI Mutual Fund Ingestion & Historical NAV Engine
 
-class PointInTimeDataAccess:
-    """Institutional Anti-Lookahead Data Access Gateway."""
-
-    def __init__(self, conn: sqlite3.Connection, asof: date):
-        self.conn = conn
-        self.asof = asof  # Simulated 'Today' barrier
-
-    def get_price(self, symbol: str, on_or_before: Optional[date] = None) -> Optional[float]:
-        target_date = on_or_before or self.asof
-        row = self.conn.execute(
-            """
-            SELECT close FROM daily_prices
-            WHERE symbol = ? AND trade_date <= ?
-            ORDER BY trade_date DESC LIMIT 1
-            """,
-            (symbol, target_date.isoformat()),
-        ).fetchone()
-        return float(row[0]) if row and row[0] is not None else None
-
-    def get_price_series(self, symbol: str, start: date, end: date) -> List[tuple]:
-        # Clamped strictly to self.asof to eliminate future leakage
-        clamped_end = min(end, self.asof)
-        return self.conn.execute(
-            """
-            SELECT trade_date, open, high, low, close, adj_close, volume
-            FROM daily_prices
-            WHERE symbol = ? AND trade_date BETWEEN ? AND ?
-            ORDER BY trade_date ASC
-            """,
-            (symbol, start.isoformat(), clamped_end.isoformat()),
-        ).fetchall()
-
-    def get_fundamental(self, symbol: str, metric: str) -> Optional[float]:
-        """Point-in-time lookup respecting the disclosed_at invariant."""
-        row = self.conn.execute(
-            """
-            SELECT value FROM fundamentals_quarterly
-            WHERE symbol = ? AND metric = ? AND disclosed_at <= ?
-            ORDER BY disclosed_at DESC, period_end DESC
-            LIMIT 1
-            """,
-            (symbol, metric, self.asof.isoformat()),
-        ).fetchone()
-        return float(row[0]) if row and row[0] is not None else None
-
-    def get_universe(self) -> List[str]:
-        """Fetch active Nifty 500 constituents as of self.asof."""
-        rows = self.conn.execute(
-            """
-            SELECT symbol FROM index_constituents_history
-            WHERE effective_date <= ?
-            GROUP BY symbol
-            HAVING MAX(effective_date) <= ?
-            """,
-            (self.asof.isoformat(), self.asof.isoformat()),
-        ).fetchall()
-        return [r[0] for r in rows]
-```
+The mutual fund ingestion pipeline (`invst/backend/src/invst/ingestion/mf_ingestion.py`):
+1. Downloads the official daily AMFI NAV master file (`https://www.amfiindia.com/spages/NAVAll.txt`).
+2. Parses semicolon-delimited scheme lines: `Scheme Code;ISIN Div Payout/ISIN Growth;ISIN Div Reinvestment;Scheme Name;Net Asset Value;Date`.
+3. Filters for **Direct-Growth** plans to evaluate pure fund-manager alpha free of intermediary distributor commissions.
+4. Categorizes funds using regex classification across 8 standardized SEBI categories:
+   - Equity: Large Cap, Mid Cap, Small Cap, Flexi Cap, ELSS (Tax Saving).
+   - Hybrid: Balanced Advantage (BAF), Aggressive Hybrid.
+   - Debt: Liquid, Short Duration.
 
 ---
 
-## 4. Quantitative Factor & Multi-Stage Scoring Engines
+## 4. Equities Quantitative Factor & Scoring Engines
 
-### 4.1 Universe Screening & Liquidity Filtering (Stage 0)
+### 4.1 Stage 0: Universe Screening & Liquidity Filtering
 
-Every rebalance cycle begins by filtering the Nifty 500 down to an **Investable Universe**:
+Filters the Nifty 500 down to an investable universe (~350–470 names):
+1. 30-Day Median Daily Traded Value $\ge ₹5.00\text{ Crore}$.
+2. Point-in-Time Market Capitalization $\ge ₹1,000\text{ Crore}$.
+3. Listing Tenure on NSE/BSE $\ge 3.0\text{ Years}$ (12 quarters of filings).
+4. Minimum Share Price $\ge ₹10.00$ (Eliminates micro-penny manipulation).
+5. Promoter Shareholding $\le 75.0\%$ (SEBI minimum public float compliance).
+6. Data Completeness: $\ge 10$ of the last 12 quarters reported.
 
-$$\text{Screened}_i = \begin{cases} 
-1 & \text{if } (\text{TradedValue}_{30d, i} \ge ₹5\text{ Cr}) \land (\text{MarketCap}_i \ge ₹1000\text{ Cr}) \land (\text{Age}_i \ge 3\text{ yrs}) \land (\text{Price}_i \ge ₹10) \\
-0 & \text{otherwise}
-\end{cases}$$
-
-Names with promoter holdings $> 75\%$ or $> 2$ missing quarters of fundamentals in the last 12 quarters are dropped.
-
-### 4.2 Decoupled Two-Level Valuation & Business Scoring (V0.2 Engine)
-
-Retail investors frequently conflate a good business with a good investment. ArthIQ separates these concepts into two explicit tiers:
+### 4.2 Decoupled Two-Level Architecture: Business Score vs. Investment Score
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│ LEVEL 1: BUSINESS SCORE (Price-Agnostic Enterprise Durability)         │
+│ LEVEL 1: BUSINESS SCORE (Enterprise Durability & Moat Depth)          │
 │ Formula: 0.60 * Business Quality Score (BQS) + 0.40 * Growth Score     │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │
                                     ▼
 ┌────────────────────────────────────────────────────────────────────────┐
 │ LEVEL 2: INVESTMENT SCORE (Attractiveness of Purchasing Today)         │
-│ Formula: 0.40 * Business Score + 0.35 * Valuation + 0.25 * Risk Score  │
-│ (Down-weighted by 10% if Execution/Liquidity is unfavorable)           │
+│ Formula: 0.40 * Business Score + 0.35 * Valuation + 0.25 * Risk        │
+│ (Down-weighted by 10% if Market Execution / Liquidity is unfavorable)  │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
 #### A. Business Quality Score (BQS) Formulation
-1. **Capital Efficiency (35%):** 5-Year median Return on Capital Employed (ROCE) and Return on Equity (ROE).
-2. **Margin Durability (25%):** Operating Profit Margin (OPM) stability measured via $\text{std}(\text{OPM}_{5y}) / \text{mean}(\text{OPM}_{5y})$.
-3. **Balance Sheet Resilience (25%):** Solvency score evaluated via $1 / (1 + \text{Debt-to-Equity})$. Interest coverage (EBIT / Interest) $\ge 4.0\times$.
-4. **Corporate Governance & Earnings Quality (15%):** Cash Flow from Operations to EBITDA ratio ($\text{CFO} / \text{EBITDA} \ge 0.80$).
+- **Capital Allocation (35%):** 5-Year median ROCE and ROE.
+- **Operating Margin Stability (25%):** $1.0 - \min(1.0, \sigma_{\text{OPM}} / \mu_{\text{OPM}})$.
+- **Balance Sheet Resilience (25%):** $1 / (1 + \text{Debt-to-Equity})$. Penalized if Interest Coverage $< 3.0\times$.
+- **Modified Sloan Accrual Penalty (15%):**
+  $$\text{Accrual Ratio} = \frac{\text{Net Income} - \text{CFO}}{\text{Total Assets}}$$
+  Penalizes aggressive paper revenues: $-15.0$ pts if ratio $> +0.10$; $+5.0$ pts if ratio $< -0.02$.
+- **Governance Deductions:** Promoter pledge $> 20\%$ or auditor qualified opinion immediately caps $\text{BQS} \le 35.0$.
 
-#### B. Growth Engine Formulation
-Evaluates 3-Year and 5-Year CAGR across Sales and Net Profit, combined with quarterly earnings acceleration ($\text{EPS Growth}_{YoY} - \text{EPS Growth}_{Prior YoY}$).
+#### B. Valuation Engine & Reverse-DCF Solver
+Transforms multiples into monotonic yields: $\text{Earnings Yield} = \frac{100}{\text{PE}_{TTM}}$ and $\text{FCF Yield} = \frac{\text{FCF}}{\text{Market Cap}} \times 100$.
 
-#### C. Valuation Engine Formulation
-Valuation is evaluated relative to the company's own historical multiple distribution:
+Computes the 5-year annualized cash flow growth rate $g$ priced into market price $P_0$:
+$$P_0 = \sum_{t=1}^5 \frac{\text{FCF}_0 \cdot (1 + g)^t}{(1 + \text{WACC})^t} + \frac{\text{FCF}_0 \cdot (1 + g)^5 \cdot (1 + g_t)}{(\text{WACC} - g_t) \cdot (1 + \text{WACC})^5}$$
+Binary search across $g \in [-20\%, +60\%]$ with $\text{WACC} = 11.5\%$ and terminal growth $g_t = 5.0\%$.
 
-$$V_i = 0.40 \cdot \text{Pct}\left(\frac{1}{\text{PE}_{TTM}}\right) + 0.30 \cdot \text{Pct}\left(\frac{\text{PE}_{3y\text{ median}}}{\text{PE}_{\text{current}}}\right) + 0.30 \cdot \text{Pct}\left(\frac{1}{\text{EV/EBITDA}}\right)$$
+### 4.3 Sector Archetypes & Cross-Sectional Normalization
+- **Financials:** Net Interest Margin (NIM), GNPA %, NNPA %, P/ABV, ROA.
+- **Industrials & Capex:** Order Book-to-Bill, Asset Turnover, Net Debt/EBITDA.
+- **Consumer & Tech:** ROCE, Working Capital Days, FCF Yield, EV/Sales.
+- All metrics are winsorized at $[5\%, 95\%]$ and standardized within sector before cross-sector ranking:
+  $$z_{i, s} = \frac{x_{i, s} - \mu_s}{\sigma_s}, \quad \text{Score}_i = \Phi(z_{i, s}) \times 100$$
 
-#### D. Risk Engine Formulation
-Subtractive risk assessment penalizing excessive volatility, market sensitivity, and drawdown risk:
-
-$$R_i = 0.40 \cdot \text{Pct}\left(\frac{1}{\text{Beta}_{2y}}\right) + 0.35 \cdot \text{Pct}\left(\frac{1}{|\text{MaxDD}_{3y}|}\right) + 0.25 \cdot \text{Pct}\left(\frac{1}{\sigma_{\text{ann}, 252d}}\right)$$
-
-### 4.3 Sector Archetypes & Sector-Relative Normalization
-
-Different sectors exhibit fundamentally different accounting metrics. ArthIQ categorizes stocks into three distinct archetypes:
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           SECTOR ARCHETYPES                             │
-├───────────────────────┬─────────────────────────┬───────────────────────┤
-│ 1. FINANCIALS         │ 2. INDUSTRIALS & CAPEX  │ 3. CONSUMER & TECH    │
-│ (Banks, NBFCs, Ins.)  │ (Capital Goods, Infra)  │ (FMCG, IT Services)   │
-│ • Net Interest Margin │ • Fixed Asset Turnover  │ • Brand Moat & ROCE   │
-│ • Gross & Net NPA     │ • Order Book / Rev Ratio│ • Working Capital Days│
-│ • Capital Adequacy    │ • Debt / EBITDA         │ • FCF Conversion      │
-│ • Excluded: D/E, ROCE │ • Heavy EV/EBITDA Focus │ • EV/Sales & P/E Focus│
-└───────────────────────┴─────────────────────────┴───────────────────────┘
-```
-
-Within each sector, all raw factors are winsorized at the 5th and 95th percentiles and transformed into sector z-scores before cross-sector ranking:
-
-$$z_{i, s} = \frac{x_{i, s} - \mu_s}{\sigma_s}, \quad \text{Score}_{i} = \Phi(z_{i, s}) \times 100$$
-
-### 4.4 Scenario Analysis & Probabilistic Expected Returns
-
-For each candidate security, the system computes probabilistic future value distributions across three distinct macro-fundamental scenarios:
-
-$$\mathbb{E}[R_i] = p_{\text{bull}} R_{i, \text{bull}} + p_{\text{base}} R_{i, \text{base}} + p_{\text{bear}} R_{i, \text{bear}}$$
-
-- **Bull Case ($p = 0.25$):** Sales growth $+200\text{ bps}$ above 5Y CAGR, valuation expands to 75th percentile historical P/E.
-- **Base Case ($p = 0.50$):** Median 5Y CAGR sustained, valuation reverts to 3Y median P/E.
-- **Bear Case ($p = 0.25$):** Earnings contract by 15%, valuation multiple compresses to 25th percentile historical P/E.
+### 4.4 Scenario Analysis & Probabilistic Return Trajectories
+Projects 1-year forward expected returns across Bull, Base, and Bear scenarios based on market regime (India VIX):
+$$\mathbb{E}[R] = p_{\text{bear}} R_{\text{bear}} + p_{\text{base}} R_{\text{base}} + p_{\text{bull}} R_{\text{bull}}$$
 
 ### 4.5 Event Intelligence & Dynamic Factor Deltas
+Corporate announcements stream into an event parser that adjusts base factor scores dynamically (e.g., $+4.0$ Growth points on quarterly PAT beat $\ge +10\%$, $-15.0$ Governance points on auditor resignation).
 
-Real-time corporate disclosures stream into an event parser that adjusts base factor scores dynamically:
-- **Earnings Beat ($\ge +10\%$ vs consensus):** $+4.0$ Growth points, $+2.0$ Quality points.
-- **Major Capex Announcement ($\ge 20\%$ Net Worth):** $+3.0$ Growth points, $-1.5$ Risk points (short-term leverage increase).
-- **Auditor Resignation / Qualified Opinion:** $-15.0$ Governance points (Immediate hard freeze from new buying).
-
----
-
-## 5. Portfolio Optimization & Real-World Execution Engine
-
-### 5.1 Hierarchical Risk Parity (HRP) Mathematical Formulation
-
-Standard Markowitz mean-variance optimization requires inverting a covariance matrix ($\Sigma^{-1}$), which magnifies noise and produces unstable, extreme portfolio weights. ArthIQ utilizes Marcos López de Prado's **Hierarchical Risk Parity (HRP)**, which operates directly on the hierarchical structure of correlations without matrix inversion.
-
-### 5.2 Quasi-Diagonalization & Recursive Bisection Algorithms
-
-```
-Correlation Matrix (ρ) ──► Distance Matrix D(i,j) ──► Hierarchical Tree ──► Quasi-Diagonal Order ──► Recursive Bisection Weights
-```
-
-1. **Correlation Distance Metric:**
-   $$d_{i, j} = \sqrt{\frac{1}{2} (1 - \rho_{i, j})}$$
-
-2. **Hierarchical Tree Clustering:** Assets are grouped using single-linkage clustering based on distance $d_{i, j}$.
-
-3. **Quasi-Diagonalization:** Reorganizes rows and columns of the covariance matrix $\Sigma$ such that highly correlated assets are placed adjacent to each other along the diagonal.
-
-4. **Recursive Bisection:**
-   For a given cluster $C$, split into sub-clusters $C_1$ and $C_2$. Compute the variance of each sub-cluster:
-   $$V_k = w_k^T \Sigma_k w_k, \quad \text{where } w_k = \frac{\text{diag}(\Sigma_k)^{-1}}{\text{Tr}(\text{diag}(\Sigma_k)^{-1})}$$
-   The allocation factor $\alpha_1$ for cluster $C_1$ is:
-   $$\alpha_1 = 1 - \frac{V_1}{V_1 + V_2}, \quad \alpha_2 = 1 - \alpha_1$$
-   Weights are updated recursively: $W_{C_1} = W_C \cdot \alpha_1$ and $W_{C_2} = W_C \cdot \alpha_2$.
-
-### 5.3 Hard Risk Caps & Dynamic Investor Profiles
-
-To balance diversification with conviction, hard constraints are applied iteratively:
-
-| Parameter | Conservative Profile | Moderate Profile (Default) | Aggressive Profile |
-| :--- | :--- | :--- | :--- |
-| **Target Holdings** | 16 stocks | 10 stocks | 8 stocks |
-| **Max Single Stock Cap** | **10.0%** | **15.0%** | **25.0%** |
-| **Max Sector Exposure** | **25.0%** | **35.0%** | **40.0%** |
-| **Minimum BQS Quality Floor**| 70.0 / 100 | 60.0 / 100 | 50.0 / 100 |
-
-Excess weights exceeding single-stock caps are clipped and redistributed proportionally among non-capped holdings via an iterative projection algorithm.
-
-### 5.4 Whole-Share Allocation & Indian Execution Cost Friction
-
-Retail brokerages require integer share purchases. ArthIQ implements a floor-sizing algorithm:
-
-$$\text{Shares}_i = \left\lfloor \frac{\text{Capital} \times w_i}{P_{i, \text{open}}} \right\rfloor$$
-
-#### Transaction Cost Accounting Matrix:
-- **Securities Transaction Tax (STT):** 10 bps ($0.10\%$) on delivery purchase and sale.
-- **Brokerage Commission:** 30 bps ($0.30\%$) buy, 20 bps ($0.20\%$) sell.
-- **Stamp Duty & Exchange Fees:** 1.5 bps ($0.015\%$).
-- **Market Impact Slippage:** 5 bps ($0.05\%$) standard, scaled up for lower-liquidity names.
-- **Total Round-Trip Friction:** **66.5 bps** explicitly subtracted from simulated backtest returns.
+### 4.6 The 2x2 Investment Matrix Quadrants
+1. **Core Compounding Alpha:** High Quality ($\ge 65$) + Attractive Valuation ($\ge 50$).
+2. **Quality Trap / Overpriced:** High Quality ($\ge 65$) + Stretched Valuation ($< 50$).
+3. **Deep Value / Cyclical Rebound:** Low Quality ($< 65$) + Extreme Cheapness ($\ge 50$).
+4. **Value Trap / Distressed:** Low Quality ($< 65$) + Cheap/Depressed Multiple ($< 50$).
 
 ---
 
-## 6. Machine Learning & Predictive Intelligence Engine (V0.3 / V0.3.1 / V0.4)
+## 5. Equities Portfolio Optimization & Indian Execution Friction
+
+### 5.1 Hierarchical Risk Parity (HRP) Mathematical Derivation
+HRP eliminates the instability of inverting the covariance matrix $\Sigma^{-1}$ by allocating risk down a hierarchical dendrogram tree.
+
+### 5.2 Tree Dendrogram Clustering & Quasi-Diagonalization
+1. **Distance Metric:** $d_{i, j} = \sqrt{\frac{1}{2} (1 - \rho_{i, j})}$.
+2. **Clustering:** Single-linkage clustering computes cluster distance:
+   $$D(u, v) = \min_{i \in u, j \in v} d_{i, j}$$
+3. **Quasi-Diagonalization:** Reorganizes rows and columns of covariance $\Sigma$ so that highest correlations are positioned adjacent along the main diagonal.
+
+### 5.3 Recursive Bisection & Investor Profile Caps
+Cluster $C$ is bisected into $C_1$ and $C_2$:
+$$V_k = w_k^T \Sigma_k w_k, \quad \text{where } w_k = \frac{\text{diag}(\Sigma_k)^{-1}}{\text{Tr}(\text{diag}(\Sigma_k)^{-1})}$$
+$$\alpha_1 = 1 - \frac{V_1}{V_1 + V_2}, \quad W_{C_1} = W_C \times \alpha_1, \quad W_{C_2} = W_C \times (1 - \alpha_1)$$
+
+#### Hard Investor Profile Caps:
+- **Conservative:** Max 10% single-stock, 25% sector cap (16 target holdings).
+- **Moderate (Default):** Max 15% single-stock, 35% sector cap (10 target holdings).
+- **Aggressive:** Max 25% single-stock, 40% sector cap (8 target holdings).
+
+### 5.4 Whole-Share Integer Allocation & Real-World Indian Friction
+1. **Integer Share Floor-Sizing:** $\text{Shares}_i = \left\lfloor \frac{\text{Capital} \times w_i}{P_{i, \text{open}}} \right\rfloor$.
+2. **Round-Trip Transaction Friction (66.5 bps):**
+   - 10 bps STT on delivery purchase & sale.
+   - 30 bps buy / 20 bps sell brokerage commission.
+   - 1.5 bps stamp duty & exchange turnover fees.
+   - 5 bps market impact slippage.
+   - **Total 66.5 bps** explicitly subtracted from realized returns on every turnover rebalance.
+
+---
+
+## 6. Equities Machine Learning Pipeline & The V0.3.1 Diagnostic Discovery
 
 ### 6.1 The 24-Dimensional Point-in-Time Feature Store
+Extracted strictly at market close on each rebalance date:
+1. `composite_score`, `investment_score`, `business_score`, `growth_score`.
+2. `roe_5yr`, `roce_5yr`, `debt_equity`.
+3. `pe_ttm`, `pb`, `ev_ebitda`, `quality_to_valuation_ratio`.
+4. `annualised_vol`, `beta`, `max_drawdown`, `downside_semivariance`.
+5. `momentum_6_12_1`, `dist_from_52w_high`, `risk_adjusted_momentum`.
+6. `news_sentiment` (FinBERT / VADER).
+7. `macro_vix`, `macro_vix_change_30d`, `macro_usd_inr`.
+8. `market_score`, `gross_npa_pct`.
 
-Every rebalance cross-section builds a 24-dimensional feature vector per stock:
-
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        THE 24-FEATURE CATALOG                          │
-├────────────────────────────────────────────────────────────────────────┤
-│ 1. composite_score         13. news_sentiment                          │
-│ 2. investment_score        14. dist_from_52w_high                      │
-│ 3. business_score          15. downside_semivariance                   │
-│ 4. growth_score            16. macro_vix                               │
-│ 5. roe_5yr                 17. macro_vix_change_30d                    │
-│ 6. roce_5yr                18. macro_usd_inr                           │
-│ 7. debt_equity             19. quality_to_valuation_ratio              │
-│ 8. pe_ttm                  20. risk_adjusted_momentum                  │
-│ 9. pb                      21. market_score                            │
-│ 10. ev_ebitda              22. gross_npa_pct (Financials)              │
-│ 11. annualised_vol         23. order_book_to_bill (Industrials)        │
-│ 12. beta                   24. working_capital_days (Consumer)         │
-└────────────────────────────────────────────────────────────────────────┘
-```
-
-### 6.2 Target Formulation & Labeling Invariants
-
-Rather than attempting to forecast noisy, non-stationary raw asset prices, the model is trained as a binary classifier predicting forward excess return over the Nifty 500 TRI:
-
+### 6.2 Target Formulation & Expanding Walk-Forward Sequence
 $$y_{i, t} = \mathbb{I}\left( R_{i, [t, t+90D]} - R_{\text{NIFTY500}, [t, t+90D]} > 0 \right)$$
+Trained via expanding historical cross-sections with strictly zero data leakage.
 
-### 6.3 Expanding Walk-Forward Cross-Validation Architecture
+### 6.3 Boosted Tree Calibration
+LightGBM and XGBoost probability outputs are calibrated using **Platt Scaling** ($P(y=1|z) = \frac{1}{1 + \exp(Az + B)}$) to minimize Brier score and Expected Calibration Error (ECE).
 
-Traditional k-fold cross-validation leaks future regime information to past samples. ArthIQ enforces an expanding walk-forward sequence:
-
-```
-2016 ──► 2020: Train (Fold 1) ──► Predict Q1 2021 (OOS)
-2016 ──► Q1 2021: Train (Fold 2) ──► Predict Q2 2021 (OOS)
-...
-2016 ──► Q4 2023: Train (Fold N) ──► Predict Q1 2024 (OOS)
-[2024-01-01 to 2026-09-21]: PERMANENTLY FROZEN UNTOUCHED TEST PARTITION
-```
-
-### 6.4 Model Architecture & Probability Calibration
-
-- **Base Estimators:** LightGBM (`LGBMClassifier`) and XGBoost (`XGBClassifier`) with early stopping, falling back to L2-regularized `LogisticRegression` when native tree libraries are uncompiled.
-- **Probability Calibration:** Boosted models produce distorted margins. ArthIQ evaluates:
-  - **Platt Scaling (`sigmoid`):** Fits a logistic sigmoid to raw margins via out-of-fold cross-validation.
-  - **Isotonic Regression:** Non-parametric monotonic binning.
-  - **Validation Metrics:** Brier Score ($BS = \frac{1}{N} \sum (p_i - y_i)^2$) and Expected Calibration Error (ECE).
-
-### 6.5 The V0.3.1 Diagnostic Breakthrough: Empirical Falsification of Standalone ML
-
-The V0.3.1 research cycle executed a rigorous 12-vector institutional audit that revealed a crucial empirical truth:
-
-| Model / Configuration | CAGR | Alpha | Sharpe | Max Drawdown | Hit Rate |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **Deterministic Baseline (V0.2.1)** | **4.60%** | **-2.56%** | **-0.17** | **-38.49%** | **46.2%** |
-| Pure ML $\gamma = 0.50$ | 4.40% | -2.75% | -0.19 | -39.01% | 45.4% |
-| 50/50 Deterministic/ML Blend ($\gamma = 1.00$) | 4.64% | -2.52% | -0.16 | -39.61% | 46.9% |
-| **Platt + 50/50 + $\gamma = 0.50$** | **4.25%** | **-2.90%** | **-0.20** | **-38.15%** | **44.6%** |
-
-#### The Untouched Out-of-Sample Performance Breakdown:
-- **Development (2016–2020):** Baseline $8.34\%$ vs ML $\mathbf{8.96\%}$ ($+0.62\%$)
-- **Validation (2021–2023):** Baseline $0.25\%$ vs ML $\mathbf{1.32\%}$ ($+1.07\%$)
-- **Frozen Untouched Test (2024–2026):** Baseline $\mathbf{-0.02\%}$ vs ML $-1.27\%$ ($\mathbf{-1.25\%}$ underperformance)
+### 6.4 The V0.3.1 Diagnostic Revelation: Standalone ML Falsification
+The institutional audit tested the calibrated ML model against the permanently frozen untouched test window (2024–2026):
+- **Development (2016–2020):** Baseline 8.34% vs ML **8.96%** (+0.62%)
+- **Validation (2021–2023):** Baseline 0.25% vs ML **1.32%** (+1.07%)
+- **Untouched Test (2024–2026):** Baseline **-0.02%** vs ML -1.27% (**-1.25% underperformance**)
 
 > [!CAUTION]
-> **Architectural Decision:** Standalone ML probability failed to generate positive out-of-sample alpha and was **rejected as the primary portfolio decision-maker**. The deterministic engine remains the permanent production baseline.
+> **Production Decision:** Standalone ML failed out-of-sample alpha verification and was rejected as the primary portfolio decision-maker. The deterministic engine remains the permanent baseline.
 
-### 6.6 Cross-Sectional Quintile Inversion & 1-P Reverse Signal Diagnostic
-
-Diagnostic evaluation revealed that the 24-feature ML model was systematically inverted:
-- **Spearman Rank IC:** **-0.0909**
-- **Information Ratio (IC IR):** **-0.39**
-- **Annualized Long/Short Return:** **-7.28%**
-
-#### Cross-Sectional Quintile Return Spread:
+### 6.5 Systematic Signal Inversion & Quintile Spread
+The full 24-feature ML model produced an inverted Spearman Rank IC of **-0.0909** and annualized Long/Short return of **-7.28%**:
 ```
 Q1 (Lowest ML Probability):  +3.76% Mean Excess Return
 Q2:                          +2.98%
@@ -608,382 +559,259 @@ Q4:                          +2.09%
 Q5 (Highest ML Probability): +1.87%
 Spread (Q5 - Q1):            -1.89% (Complete Inversion)
 ```
+The reverse signal ($1 - P$) achieved a positive Rank IC of **+0.0909** and $+7.76\%$ L/S return.
 
-Testing a reversed signal ($P_{\text{reverse}} = 1 - P$) yielded an IC of **+0.0909** and L/S return of **+7.76%**. However, rather than naively deploying $1 - P$, the system mandated feature ablation to uncover the root cause.
+### 6.6 Feature Group Ablation & The Fundamentals-Only Alpha Discovery
+Controlled 8-subset ablation isolated the cause: **Balance sheet fundamentals hold genuine positive alpha**, while adding momentum and macro variables created destructive collinear interactions:
 
-### 6.7 Feature Group Ablation & The Fundamentals-Only Alpha Discovery
-
-A controlled 8-subset feature ablation isolated the exact source of signal inversion:
-
-| Feature Subset Tested | Rank IC | IC IR | Positive IC Quarters | Annualized L/S Return |
+| Feature Subset Tested | Rank IC | IC IR | Positive Quarters | Annualized L/S Return |
 | :--- | :---: | :---: | :---: | :---: |
-| **Fundamentals Only (Set A)** | **+0.0179** | **+0.07** | **60.0%** | **+4.99%** |
+| **Fundamentals Only (Set A: RoE, RoCE, D/E)** | **+0.0179** | **+0.07** | **60.0%** | **+4.99%** |
 | Valuation Only | +0.0024 | +0.01 | 48.0% | -0.15% |
 | Risk Only | +0.0311 | +0.17 | 64.0% | -2.24% |
 | Momentum Only | -0.0163 | -0.06 | 52.0% | -4.71% |
-| Fundamentals + Valuation | -0.0648 | -0.25 | 48.0% | -3.11% |
-| Fundamentals + Risk | -0.0359 | -0.15 | 52.0% | -1.33% |
-| Fundamentals + Valuation + Risk | -0.0798 | -0.37 | 28.0% | -6.32% |
 | **Full 24 Features** | **-0.0909** | **-0.39** | **32.0%** | **-7.28%** |
 
-**Conclusion:** Pure fundamental balance sheet variables (RoE, RoCE, Debt/Equity) hold genuine predictive alpha. Adding technical momentum, valuation multiples, and macro variables introduced destructive collinear interactions that inverted the model.
-
-### 6.8 The 8 Institutional Model Promotion Gates
-
-No model can be promoted to production without clearing all 8 binary gates:
-1. **Gate 1 (Zero PIT Lookahead):** 100% pass rate across historical rebalance audits.
-2. **Gate 2 (Positive Statistical Signal):** Spearman Rank IC $> 0.00$ and $\text{IC IR} > 0.00$.
-3. **Gate 3 (Monotonic Quintiles):** $Q5 > Q1$ spread $> 0$.
-4. **Gate 4 (Temporal Stability):** Signal persists across multiple economic regimes.
-5. **Gate 5 (Untouched Test Performance):** Positive incremental return on frozen test data.
-6. **Gate 6 (Economic Causality):** Documented, intuitive economic hypothesis.
-7. **Gate 7 (Transaction Cost Resilience):** Net alpha survives 66.5 bps round-trip friction.
-8. **Gate 8 (Net Portfolio Value-Add):** Empirically improves portfolio Sharpe vs baseline.
+### 6.7 The 8 Institutional Model Promotion Gates
+Before any model can alter portfolio weights, it must pass 8 binary gates:
+1. Zero lookahead PIT violations (100% pass across historical audits).
+2. Positive Spearman Rank IC ($> 0.00$) and Information Ratio ($\text{IC IR} > 0.00$).
+3. Monotonic cross-sectional quintiles ($Q5 > Q1$).
+4. Multi-regime temporal stability.
+5. Untouched test outperformance on frozen 2024–2026 data.
+6. Documented causal economic mechanism.
+7. Resilience after full transaction friction (66.5 bps).
+8. Net empirical portfolio improvement vs baseline.
 
 ---
 
-## 7. The V0.4 Decision Intelligence Framework
+## 7. The V0.4 Decision Intelligence Architecture
 
 ### 7.1 Normalized Additive Decision Function ($\text{ArthScore}$)
-
-V0.4 abandons opaque multiplicative scoring in favor of a transparent, bounded additive framework:
-
-$$\boxed{\text{ArthScore}_i = \left( w_F F_i + w_M M_i + w_E E_i + w_R R_i + w_H H_i \right) \times \text{Agreement}_i}$$
-
-Where:
-- $F_i$: Fundamental Business Quality Pillar $\in [0, 100]$ (Weight $w_F = 0.30$)
-- $M_i$: Valuation & Margin-of-Safety Pillar $\in [0, 100]$ (Weight $w_M = 0.25$)
-- $E_i$: Earnings Growth & Acceleration Pillar $\in [0, 100]$ (Weight $w_E = 0.20$)
-- $R_i$: Capital Preservation & Downside Risk Pillar $\in [0, 100]$ (Weight $w_R = 0.15$)
-- $H_i$: Calibrated ML Alpha Conviction $\in [0, 100]$ (Weight $w_H = 0.10$)
+$$\boxed{\text{ArthScore}_i = \left( 0.30 F_i + 0.25 M_i + 0.20 E_i + 0.15 R_i + 0.10 H_i \right) \times \text{Agreement}_i}$$
+Where $F_i$ = Fundamental Quality, $M_i$ = Valuation Multiple, $E_i$ = Earnings Growth, $R_i$ = Capital Preservation, and $H_i$ = Calibrated ML Conviction.
 
 ### 7.2 Cross-Pillar Signal Agreement Mechanism
+$$\text{Divergence}_i = \frac{|F_i - H_i|}{100}, \quad \text{Agreement}_i = \max\left(0.50, \, 1.0 - 0.30 \times \text{Divergence}_i\right)$$
+Prevents capital allocation when short-term momentum and fundamental quality disagree.
 
-To prevent aggressive tilts when fundamentals and quantitative momentum diverge:
-
-$$\text{Divergence}_i = \frac{|F_i - H_i|}{100}$$
-
-$$\text{Agreement}_i = \max\left(0.50, \, 1.0 - \left(\alpha_{\text{agreement}} \times \text{Divergence}_i\right)\right) \quad (\text{Default } \alpha_{\text{agreement}} = 0.30)$$
-
-When Fundamental Quality is 90 but ML Conviction is 20, the divergence ($0.70$) applies a penalty factor of $0.79$, dampening the score and preventing capital misallocation.
-
-### 7.3 Candidate Signal Zoo (Candidates 1, 2, and 3)
-
-- **Candidate 1 (Fundamentals Only):** Features `[roe_5yr, roce_5yr, debt_equity]`. Pure long-term compounding.
-- **Candidate 2 (Fundamentals + Momentum):** Features `[roe_5yr, roce_5yr, debt_equity, momentum_6_12_1, dist_from_52w_high, risk_adjusted_momentum]`. Filters out stagnant value traps.
-- **Candidate 3 (Fundamentals + Sentiment):** Features `[roe_5yr, roce_5yr, debt_equity, news_sentiment]`. Provides early shock resistance.
+### 7.3 Candidate Signal Zoo
+- **Candidate 1 (Fundamentals Only):** Features `[roe_5yr, roce_5yr, debt_equity]`.
+- **Candidate 2 (Fundamentals + Momentum):** Features `[roe_5yr, roce_5yr, debt_equity, momentum_6_12_1, dist_from_52w_high, risk_adjusted_momentum]`.
+- **Candidate 3 (Fundamentals + Sentiment):** Features `[roe_5yr, roce_5yr, debt_equity, news_sentiment]`.
 
 ### 7.4 Multi-Horizon Decay Analysis (30D to 252D)
+Signals are evaluated across 30D, 60D, 90D, 180D, and 252D horizons to isolate where predictive edge peaks.
 
-Signals are tracked across 5 holding periods to identify where alpha peaks:
-- **30 Days:** Captures short-term post-earnings announcement drift (PEAD).
-- **60 Days:** Transition window.
-- **90 Days:** Quarterly corporate disclosure cycle (Default cadence).
-- **180 Days / 252 Days:** Multi-quarter fundamental compounding horizon.
-
-### 7.5 Shadow Portfolio Tracking & Real-Time Slippage Monitoring
-
-Every rebalance recommendation generates a persistent shadow tracking record in `shadow_portfolio_records`. As live market ticks arrive, the shadow engine logs:
-- Theoretical execution price vs. actual market open.
-- Realized execution slippage.
-- Portfolio drift relative to target HRP weights.
+### 7.5 Shadow Portfolio Execution & Real-Time Tracking
+Tracks theoretical model allocations against realized market fills and logs execution slippage in `shadow_portfolio_records`.
 
 ---
 
-## 8. Backend API & Service Infrastructure
+## 8. Mutual Fund Intelligence, Analytics & Advisory Engine
 
-### 8.1 Technology Stack & Directory Structure
+### 8.1 Quantitative Performance Metrics
+1. **Annualized CAGR:** $\text{CAGR} = \left(\frac{\text{NAV}_{\text{end}}}{\text{NAV}_{\text{start}}}\right)^{\frac{1}{\text{Years}}} - 1$.
+2. **Rolling Returns Distribution:** Eliminates point-to-point recency bias by measuring returns starting on every single calendar day across 1Y, 3Y, and 5Y windows. Reports Mean, Median, 25th percentile, 75th percentile, and negative return probability.
 
-- **Runtime:** Python 3.11+
-- **Web Framework:** FastAPI with Uvicorn ASGI server
-- **Data Validation:** Pydantic v2
-- **Data Science Core:** NumPy, SciPy, Pandas, Scikit-Learn, LightGBM, XGBoost
-- **Database:** SQLite 3 (WAL mode) with automated SQL migration runner
+### 8.2 Risk-Adjusted Performance Ratios
+- **Sharpe Ratio:** $\frac{\mu(R_p - R_f)}{\sigma(R_p)} \times \sqrt{252}$ ($R_f = 6.5\%$ RBI 91-day T-Bill).
+- **Sortino Ratio:** Measures return per unit of downside risk:
+  $$\text{Sortino} = \frac{\mu(R_p - R_f)}{\sqrt{\frac{1}{N}\sum \min(0, R_p - R_f)^2}} \times \sqrt{252}$$
+- **Treynor Ratio:** $\frac{\mu(R_p - R_f)}{\beta}$.
+- **Jensen's Alpha:** $\alpha = R_p - [R_f + \beta (R_m - R_f)]$.
+- **Upside / Downside Capture Ratios:** Measures performance relative to the benchmark during positive vs. negative benchmark months:
+  $$\text{Up Capture} = \frac{\mu(R_{\text{fund}} | R_{\text{bench}} > 0)}{\mu(R_{\text{bench}} | R_{\text{bench}} > 0)} \times 100$$
+  $$\text{Down Capture} = \frac{\mu(R_{\text{fund}} | R_{\text{bench}} < 0)}{\mu(R_{\text{bench}} | R_{\text{bench}} < 0)} \times 100$$
 
+### 8.3 Robust Cashflow-Based XIRR Solver
+Solves for the internal rate of return on irregular SIP and lump-sum cash flows:
+$$\text{NPV}(r) = \sum_{i=1}^N \frac{C_i}{(1 + r)^{\frac{d_i - d_0}{365.25}}} = 0$$
+Implemented using **Newton-Raphson** with exact first-derivative evaluation, falling back to **Brent's method (bisection)** across bracketed intervals `[(-0.95, 0.5), (0.0, 2.0), (1.0, 10.0)]` if gradient divergence occurs.
+
+### 8.4 Cross-Fund Portfolio Stock Overlap Matrix
+Calculates pairwise and portfolio-wide stock overlap across mutual funds:
+$$\text{Overlap}(A, B) = \sum_{s \in A \cap B} \min\left(w_A(s), \, w_B(s)\right)$$
+Identifies portfolio redundancy and aggregates underlying company exposures across multiple funds.
+
+### 8.5 Goal-Based Advisory & Asset Allocation Profiling
+Maps user goals and risk capacity to optimal category distributions:
+- **Emergency Fund / Short Horizon (< 3 yrs):** 50% Liquid Debt, 50% Balanced Advantage.
+- **Tax Saving (80C):** 60% ELSS, 40% Flexi Cap.
+- **Conservative:** 50% Balanced Advantage, 30% Large Cap, 20% Passive Index.
+- **Moderate (Balanced Growth):** 40% Flexi Cap, 30% Large Cap, 20% Balanced Advantage, 10% Mid Cap.
+- **Aggressive Multi-Cap Alpha ($\ge 7$ yrs):** 35% Flexi Cap, 30% Mid Cap, 20% Small Cap, 15% Passive Index.
+
+### 8.6 SIP Wealth Trajectory Compounder with Step-Up Modeling
+Simulates wealth creation under compounding with an annual top-up percentage ($s\%$ annual step-up):
+$$\text{SIP Month } m: \quad C_m = C_0 \times (1 + s)^{\lfloor (m - 1) / 12 \rfloor}$$
+
+### 8.7 Capital Gains Tax Harvesting Analyzer (Finance Act 2024)
+- **Equity Funds:**
+  - **Short-Term Capital Gains (STCG, $< 12$ months):** Taxed at **20.0%**.
+  - **Long-Term Capital Gains (LTCG, $\ge 12$ months):** Taxed at **12.5%** with annual exemption threshold of **₹1,25,000**.
+- **Tax Harvesting Strategy:** Automatically identifies unrealized long-term gains up to ₹1,25,000 to sell and immediately repurchase, resetting cost basis tax-free.
+
+---
+
+## 9. Multi-Asset Portfolio Health & Sizing Blotter
+
+The portfolio health engine (`invst/backend/src/invst/portfolio/health.py`) diagnoses user-provided stock and mutual fund holdings:
+1. **Position Health Diagnosis:** Evaluates unrealized P&L, BQS, Valuation, Risk, and Investment scores to generate an action verdict:
+   - `BUY_MORE`: High Quality + Margin of Safety + Undersized weight.
+   - `HOLD`: Compounding within risk bounds.
+   - `TRIM`: Weight exceeds risk caps (max 25% stock / 40% sector) or valuation is stretched.
+   - `EXIT_SELL`: Critical governance redline, fundamental deterioration, or loss of moat.
+2. **Capital Delta & Share Sizing:** Computes exact integer shares to buy/sell and cash required/unlocked.
+3. **Multi-Horizon Wealth Projections:** Estimates portfolio value at 1-Year, 3-Year, and 5-Year horizons across Bull, Base, and Bear trajectories.
+
+---
+
+## 10. Backend REST API, Security & Distributed Infrastructure
+
+### 10.1 FastAPI Architecture & Directory Structure
 ```
 invst/backend/
-├── app/
-│   └── streamlit_app.py          # Legacy Python UI
-├── config/
-│   ├── settings.yaml             # Core operational settings & thresholds
-│   ├── scoring_weights.yaml      # Multi-factor weights
-│   └── sectors.yaml              # Sector mappings & caps
-├── db/
-│   ├── migrations/               # Incremental SQL migrations
-│   ├── seed/                     # Nifty 500 constituents CSVs
-│   └── migrate.py                # Schema migration executor
 ├── src/invst/
-│   ├── api/                      # REST endpoints & schemas
-│   ├── backtest/                 # Walk-forward backtest simulation engine
-│   ├── data_access.py            # PointInTimeDataAccess abstraction
-│   ├── execution/                # Shadow portfolio & broker bridge
-│   ├── ingestion/                # Bhavcopy, filings, macro parsers
-│   ├── ml/                       # Features, classifier, diagnostics, ranking
-│   ├── monitoring/               # Data quality, PIT audits, drift
-│   ├── optimization/             # HRP optimizer & caps
-│   ├── portfolio/                # User portfolio health tracking
-│   ├── reporting/                # Plain-English rationales & PDF generation
-│   └── scoring/                  # BQS, Growth, Valuation, Risk, Composite V2
-└── tests/                        # 97+ automated pytest test suite
+│   ├── api/
+│   │   ├── app.py          # FastAPI application factory & SPA routing
+│   │   ├── auth.py         # PBKDF2-SHA256 & RFC 7519 JWT
+│   │   ├── routes.py       # Equities & Portfolio REST endpoints
+│   │   ├── mf_routes.py    # Mutual Fund REST endpoints
+│   │   ├── schemas.py      # Equities Pydantic v2 schemas
+│   │   └── mf_schemas.py   # Mutual Fund Pydantic v2 schemas
+│   ├── db/
+│   │   └── engine.py       # SQLite WAL & Neon PostgreSQL dual engine
+│   ├── scoring/            # Scoring engines (Equities & MF)
+│   ├── optimization/       # HRP optimizer
+│   ├── ml/                 # Classifiers, ranking, diagnostics
+│   ├── portfolio/          # Health diagnosis & MF portfolio service
+│   ├── backtest/           # Walk-forward backtesting engine
+│   └── monitoring/         # DQ checks & PIT audit engine
 ```
 
-### 8.2 Security, Cryptographic Authentication & RBAC
+### 10.2 Cryptographic Authentication (PBKDF2-SHA256 & RFC 7519 JWT)
+- **Password Hashing:** PBKDF2 with HMAC-SHA256, 600,000 iterations, random 16-byte cryptographic salt.
+- **Timing-Safe Comparison:** `hmac.compare_digest` prevents timing analysis.
+- **Zero-Dependency JWT:** Built-in RFC 7519 implementation using HS256 HMAC signatures with base64url encoding.
+- **Role-Based Access Control (RBAC):** `admin` and `user` role enforcement on protected endpoints.
 
-- **Password Hashing:** PBKDF2 with SHA-256 HMAC (600,000 iterations) or BCrypt with automatic salting.
-- **Timing-Safe Comparison:** `hmac.compare_digest` prevents side-channel timing attacks.
-- **Session Tokens:** 256-bit cryptographically secure bearer tokens (`secrets.token_urlsafe(32)`).
-- **Role-Based Access Control (RBAC):** `admin` (user management, model retraining) and `user` (portfolio tracking, recommendations).
+### 10.3 Complete API Endpoint Catalog
 
-### 8.3 RESTful Endpoint Specifications & Schemas
+#### Equities & Core Endpoints:
+- `POST /api/auth/login`: Authenticate and receive bearer JWT.
+- `GET /api/dashboard`: Portfolio summary, market regime, top holdings.
+- `GET /api/recommendations`: Latest quarterly scorecards, weights, matrix quadrants.
+- `GET /api/stock/{symbol}`: Deep-dive factor scores, scenario projections, financials.
+- `POST /api/backtest/run`: Execute walk-forward simulation across specified dates.
+- `GET /api/health`: Data quality status, PIT audit invariants, drift alerts.
+- `GET /api/portfolio/health`: Comprehensive health diagnosis of user's equity holdings.
 
-| Endpoint | Method | Role | Description |
-| :--- | :---: | :--- | :--- |
-| `/api/auth/login` | POST | Public | Authenticates credentials and returns bearer token |
-| `/api/dashboard` | GET | Authenticated | Portfolio summary, market regime, top holdings |
-| `/api/recommendations` | GET | Authenticated | Latest quarterly V0.2 scorecards and target allocations |
-| `/api/stock/{symbol}` | GET | Authenticated | Deep-dive factor diagnostics, historical financials, scenario trees |
-| `/api/backtest/run` | POST | Authenticated | Executes walk-forward simulation across specified date range |
-| `/api/health` | GET | Authenticated | Data quality report, PIT audit invariants, model calibration |
-| `/api/ml/status` | GET | Authenticated | Registry state, Promotion Gate scorecard, Rank IC trends |
-| `/api/ml/train` | POST | Admin | Triggers expanding walk-forward retraining job |
-| `/api/portfolio/custom` | POST | Authenticated | Creates and tracks user's actual broker positions |
+#### Mutual Fund Endpoints:
+- `GET /api/mf/schemes`: Search and filter AMFI schemes master.
+- `GET /api/mf/schemes/{code}`: Scheme details, trailing returns, risk metrics.
+- `GET /api/mf/schemes/{code}/nav`: Daily historical NAV time series.
+- `GET /api/mf/schemes/{code}/rolling`: Rolling returns distribution (1Y, 3Y, 5Y).
+- `GET /api/mf/compare`: Side-by-side fund comparison.
+- `POST /api/mf/overlap`: Pairwise cross-fund portfolio stock overlap matrix.
+- `POST /api/mf/recommend`: Goal-based mutual fund basket and asset allocation.
+- `GET /api/mf/portfolios`: User mutual fund portfolios, holdings, and overall XIRR.
+- `POST /api/mf/portfolios/{id}/transactions`: Record buy/sell/SIP transactions.
+- `GET /api/mf/portfolios/{id}/tax-harvesting`: Realized & unrealized gains with ₹1.25L LTCG harvesting analyzer.
 
-### 8.4 Automated Plain-English Rationale Generation & PDF Reporting
-
-The rationale generator compiles quantitative metrics into structured, institutional prose:
-
-```
-[STOCK]: RELIANCE INDUSTRIES (RELIANCE) — Energy Archetype
-[SCORE]: Investment Score: 78 / 100 | Business Score: 82 / 100 | Matrix: Core Compounding Alpha
-[THESIS]:
-Reliance demonstrates superior capital efficiency with 5-year average ROCE of 16.2% 
-and operating margin resilience. Valuation is compelling with TTM P/E trading 1.1σ below 
-its 3-year sector median. Free cash flow generation comfortably covers debt servicing 
-with Interest Coverage at 5.4x.
-
-[KEY RISKS & HEADWINDS]:
-Downside sensitivity to global refining margin contraction and telecommunications 
-capex expansion cycle.
-
-[INVALIDATION CRITERIA]:
-ROCE degradation > 250 bps or gross debt-to-equity exceeding 0.85x.
-```
+### 10.4 Automated Plain-English Rationale Generation & PDF Reports
+Generates structured institutional prose for every recommendation:
+- **Thesis:** Capital efficiency, earnings momentum, margin durability.
+- **Valuation Context:** P/E vs 3Y sector median, reverse-DCF implied growth.
+- **Key Risks:** Industry cyclicality, raw material exposure, leverage.
+- **Invalidation Triggers:** Concrete thresholds (e.g., ROCE drop $> 250\text{ bps}$, D/E $> 0.85\times$) that mandate immediate liquidation.
+- Exportable as print-friendly PDF via WeasyPrint / PDFKit.
 
 ---
 
-## 9. Frontend Client Architecture (React 19 + TypeScript + Tailwind CSS)
+## 11. Modern Obsidian Frontend Client (React 19 + TypeScript + Vite)
 
-### 9.1 Obsidian Dark Design System & Visual Tokens
-
-The frontend uses a custom-tailored institutional dark theme:
+### 11.1 Obsidian Dark Design System & Glassmorphism Tokens
 - **Backgrounds:** Deep Obsidian Black (`#040508`), Card Glass (`#0b0f17` with 70% opacity and `backdrop-blur-md`).
-- **Accent Primaries:** Winsor Blue (`#1d4ed8`), Sky Cyan (`#0284c7`).
-- **Status Indicators:** Emerald Alpha (`#10b981`), Amber Warning (`#f59e0b`), Crimson Drawdown (`#ef4444`).
-- **Typography:** Tabular monospace numerals (`font-mono tracking-tight`) for financial data grids.
+- **Accent Primaries:** Winsor Blue (`#1d4ed8`), Sky Cyan (`#0284c7`), Emerald (`#10b981`), Amber (`#f59e0b`), Crimson (`#ef4444`).
+- **Numerals:** Monospace tabular formatting (`font-mono tracking-tight`).
 
-### 9.2 Real-Time Navigation, IST Monospace Clock & Live Ticker Marquee
+### 11.2 Live IST Monospace Clock & Ticker Tape Marquee
+- **Header:** Real-time ticking Indian Standard Time digital clock (`hh:mm:ss A IST`) alongside current Indian calendar date.
+- **Market Ticker:** CSS infinite marquee displaying live market rates (Nifty 50, Sensex, Bank Nifty, India VIX, Crude Oil, USD/INR, 10Y G-Sec) with a pulsing radio broadcast beacon.
 
-- **Header Bar:** Displays current Indian Standard Date alongside a live ticking IST digital clock (`hh:mm:ss A IST`).
-- **Market Ticker:** Infinite CSS marquee displaying real-time ticks for Nifty 50, Sensex, Bank Nifty, India VIX, Brent Crude, USD/INR, and 10Y G-Sec with pulsing radio broadcast beacon.
-
-### 9.3 The Five Core Analytical Modules
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                      FIVE CORE FRONTEND MODULES                         │
-├─────────────────┬─────────────────┬─────────────────────────────────────┤
-│ 1. Stock Ideas  │ QuickPicks      │ Configurable Top-N slider (1-50)    │
-│                 │ Matrix Grid     │ Cross-sectional factor heatmaps     │
-│                 │ Capital Calc    │ Integer share sizing for ₹500-₹10L  │
-├─────────────────┼─────────────────┼─────────────────────────────────────┤
-│ 2. Lens         │ Factor Dials    │ BQS, Valuation, Risk, Sentiment     │
-│                 │ Scenarios       │ Bull / Base / Bear probability tree │
-│                 │ Quant Thesis    │ Plain-English institutional summary │
-├─────────────────┼─────────────────┼─────────────────────────────────────┤
-│ 3. Vault        │ Asset Donut     │ SVG interactive sector breakdown    │
-│                 │ Risk Caps       │ Max 25% single-stock, 40% sector    │
-│                 │ Friction Calc   │ Round-trip STT and slippage buffer  │
-├─────────────────┼─────────────────┼─────────────────────────────────────┤
-│ 4. Pulse        │ Quant Radar     │ Interactive SVG cluster constellation│
-│                 │ Thematic Baskets│ AI Tech, Clean Capex, Defense, Banks│
-├─────────────────┼─────────────────┼─────────────────────────────────────┤
-│ 5. Edge         │ Event Feed      │ Streaming audit trail of disclosures│
-│                 │ PIT Badges      │ Verified exchange timestamp tags    │
-│                 │ Score Deltas    │ Real-time factor adjustments        │
-└─────────────────┴─────────────────┴─────────────────────────────────────┘
-```
+### 11.3 Analytical Modules
+- **Stock Ideas:** QuickPicks slider (Top 1 to 50 equities), cross-sectional factor matrix heatmap, capital deployment calculator (₹500 to ₹10 Lakhs, whole shares).
+- **Lens:** Factor magnifier radar, historical returns spectrum (1D to 1Y), scenario trees.
+- **Vault:** Interactive SVG sector allocation donut, 25% stock / 40% sector cap enforcement, 66.5 bps friction calculator.
+- **Pulse:** Interactive SVG thematic constellation radar (AI Tech, Clean Capex, Defense, Compounding Titans).
+- **Edge:** Streaming audit feed of corporate disclosures with verified exchange timestamps.
+- **Mutual Funds:** Scheme explorer, rolling returns visualizer, SIP wealth trajectory compounder, portfolio overlap analyzer, and tax-loss harvesting engine.
+- **Portfolio Health:** Position-level health cards, rebalance sizing blotter, and multi-horizon forecasts.
 
 ---
 
-## 10. Walk-Forward Backtesting & Performance Analytics
+## 12. Walk-Forward Backtesting, Audits & Operational Runbooks
 
-### 10.1 Walk-Forward Simulation Loop
+### 12.1 Walk-Forward Simulation Engine & Performance Metrics
+- **Quarterly Cadence:** Rebalances quarterly matching Indian corporate earnings cycles.
+- **Metrics Computed:** CAGR, Sharpe Ratio, Sortino Ratio, Calmar Ratio, Annualized Turnover, Maximum Drawdown, Hit Rate vs Nifty 500 TRI.
+- **Realistic Friction:** 66.5 bps round-trip transaction costs deducted on every rebalance.
 
-```python
-# Pseudocode of the Walk-Forward Loop
-for rebalance_date in quarterly_dates(start_date, end_date):
-    # 1. Obtain point-in-time universe
-    pit = PointInTimeDataAccess(conn, asof=rebalance_date)
-    universe = pit.get_universe()
-    
-    # 2. Compute multi-stage quantitative scores
-    scorecards = compute_scorecards_v2(pit, symbols=universe)
-    
-    # 3. Filter top candidates
-    shortlist = scorecards[:top_n]
-    
-    # 4. Extract rolling 3-year covariance matrix
-    cov_matrix = pit.get_rolling_covariance(shortlist, lookback_days=756)
-    
-    # 5. Optimize weights via HRP with 25% stock / 40% sector caps
-    hrp_result = compute_hrp_weights(cov_matrix)
-    
-    # 6. Execute fill at next-day open price (t + 1)
-    fill_prices = pit.get_open_prices(rebalance_date + 1)
-    
-    # 7. Deduct transaction friction (66.5 bps)
-    portfolio.rebalance(hrp_result.weights, fill_prices, friction_bps=66.5)
-    
-    # 8. Mark-to-market daily until next quarterly rebalance
-    portfolio.mark_to_market_daily(rebalance_date, next_rebalance_date)
-```
+### 12.2 Daily Data Quality Invariants & Weekly PIT Audits
+- **Daily DQ:** Verifies Bhavcopy row count $> 1,500$, zero missing symbols in Nifty 500, and flags price jumps $> \pm 30\%$ without corporate action records.
+- **Weekly PIT Audit:** Sunday 02:00 IST audit asserting `disclosed_at <= CURRENT_DATE` and verifying identical backtest reproducibility.
 
-### 10.2 Mathematical Metric Formulations
-
-$$\text{CAGR} = \left( \frac{\text{Equity}_{\text{end}}}{\text{Equity}_{\text{start}}} \right)^{\frac{1}{\text{Years}}} - 1$$
-
-$$\text{Sharpe} = \frac{\mu_{R_p - R_f}}{\sigma_{R_p}} \times \sqrt{252} \quad (\text{Benchmark } R_f = \text{RBI 91-Day T-Bill})$$
-
-$$\text{Sortino} = \frac{\mu_{R_p - R_f}}{\sigma_{\text{downside}}} \times \sqrt{252}, \quad \text{where } \sigma_{\text{downside}} = \sqrt{\frac{1}{N} \sum \min(0, R_p - R_f)^2}$$
-
-$$\text{Max Drawdown} = \min_{t} \left( \frac{\text{Equity}_t - \max_{\tau \le t} \text{Equity}_\tau}{\max_{\tau \le t} \text{Equity}_\tau} \right)$$
-
-$$\text{Annualized Turnover} = \frac{1}{2 \times \text{Years}} \sum_{t=1}^{T} \sum_{i} |w_{i, t} - w_{i, t^-}|$$
-
----
-
-## 11. Monitoring, Data Quality & Operational Runbooks
-
-### 11.1 Daily Data Quality Invariant Checks
-1. **Row Count Verification:** NSE Bhavcopy file must contain $> 1,500$ rows.
-2. **Missing Symbol Alert:** Every Nifty 500 constituent must have a valid close price for trading day $t$.
-3. **Price Jump Anomaly Filter:** Any single-day price movement $> \pm 30\%$ without a corresponding stock split or bonus issue in corporate actions triggers an immediate halt and manual review.
-
-### 11.2 Weekly Point-in-Time Audit Engine
-Runs every Sunday at 02:00 IST to assert:
-- $\forall \text{ rows in } \text{fundamentals\_quarterly}: \text{disclosed\_at} \le \text{CURRENT\_DATE}$.
-- $\forall \text{ rows}: \text{disclosed\_at} \ge \text{period\_end} - 14\text{ days}$.
-- Re-running the identical backtest configuration JSON reproduces the exact CAGR, Sharpe, and Drawdown to 4 decimal places.
-
-### 11.3 Population Stability Index (PSI) & Concept Drift Detection
-
-$$PSI = \sum_{k=1}^{K} \left( \text{Actual}_k - \text{Expected}_k \right) \times \ln\left(\frac{\text{Actual}_k}{\text{Expected}_k}\right)$$
-
-- $PSI < 0.10$: Stable distribution; no action needed.
-- $0.10 \le PSI \le 0.25$: Moderate drift; log warning.
-- $PSI > 0.25$: Significant population drift; triggers automatic retrain recommendation and notifies admin.
-
-### 11.4 Cron Automation Schedules
-
+### 12.3 Automated Cron Schedules
 ```cron
 # /etc/cron.d/arthiq-ops
 # 1. Daily Bhavcopy Ingestion (Mon-Fri 18:30 IST)
 30 18 * * 1-5 arthiq cd /opt/arthiq/backend && python3 -m invst.cli ingest --daily >> /var/log/arthiq/ingest.log 2>&1
 
-# 2. Daily Data Quality Audit (Mon-Fri 19:30 IST)
+# 2. Daily AMFI Mutual Fund NAV Ingestion (Daily 23:00 IST)
+0 23 * * * arthiq cd /opt/arthiq/backend && python3 -m invst.cli ingest --mf >> /var/log/arthiq/mf_ingest.log 2>&1
+
+# 3. Daily Data Quality Audit (Mon-Fri 19:30 IST)
 30 19 * * 1-5 arthiq cd /opt/arthiq/backend && python3 -m invst.cli monitor --dq >> /var/log/arthiq/dq.log 2>&1
 
-# 3. News Sentiment Scraper (Daily at 09:00, 13:00, 17:00, 21:00 IST)
-0 9,13,17,21 * * * arthiq cd /opt/arthiq/backend && python3 -m invst.cli ingest --news >> /var/log/arthiq/news.log 2>&1
-
-# 4. Weekly Point-in-Time Zero-Lookahead Audit (Sun 02:00 IST)
+# 4. Weekly PIT Zero-Lookahead Audit (Sun 02:00 IST)
 0 2 * * 0 arthiq cd /opt/arthiq/backend && python3 -m invst.cli monitor --pit >> /var/log/arthiq/pit_audit.log 2>&1
 ```
 
 ---
 
-## 12. End-to-End Build Blueprint: From Zero to Production
+## 13. End-to-End Build Blueprint: From Zero to Full Deployment
 
-Follow these exact operational steps to rebuild and run the entire ArthIQ platform from scratch on a clean system:
+Follow these exact operational steps to rebuild the entire platform from scratch:
 
-### Step 1: Directory Setup & Python Virtual Environment
 ```bash
-# Create project root directory
-mkdir -p arthiq && cd arthiq
+# Step 1: Clone & Setup Backend Environment
+git clone <repo_url> arthiq && cd arthiq/backend
+python3.11 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+pip install -r requirements-dev.txt
 
-# Clone repository or initialize structure
-git init
-
-# Setup backend environment
-cd backend
-python3.11 -m venv venv
-source venv/bin/activate
-
-# Install locked dependencies
-pip install --upgrade pip setuptools wheel
-pip install fastapi uvicorn pydantic pyyaml numpy scipy pandas scikit-learn
-# Optional tree boosters (or rely on built-in regularized logistic fallback)
-pip install lightgbm xgboost
-# Testing & linting
-pip install pytest pytest-cov ruff httpx
-```
-
-### Step 2: Database Migration & Static Universe Seeding
-```bash
-# Initialize SQLite database with Write-Ahead Logging & core tables
+# Step 2: Database Migration & Seeding
 python3 -m invst.db.migrate
-
-# Seed historical Nifty 500 constituents and sector mappings
 python3 scripts/seed_constituents.py
 
-# Verify database integrity
-sqlite3 db/invst.db "PRAGMA journal_mode;" # Returns: wal
-sqlite3 db/invst.db "SELECT count(*) FROM index_constituents_history;"
-```
+# Step 3: Market Data & Mutual Fund Ingestion
+python3 -m invst.cli ingest --daily
+python3 -m invst.cli ingest --mf
 
-### Step 3: Core Quantitative & Data Access Implementation
-1. Copy or implement `src/invst/data_access.py` (`PointInTimeDataAccess`).
-2. Implement Stage 0 screening filters in `src/invst/scoring/filters.py`.
-3. Implement Business Quality (`quality.py`), Valuation (`valuation_v2.py`), and Risk (`risk_v2.py`).
-4. Implement the Level 1/Level 2 synthesis in `src/invst/scoring/composite_v2.py`.
-5. Implement the HRP optimizer in `src/invst/optimization/hrp.py`.
+# Step 4: Verify Unit & Integration Tests (100% pass required)
+pytest tests/ -v
 
-### Step 4: Machine Learning Pipeline & Diagnostics Suite
-1. Implement point-in-time feature extraction in `src/invst/ml/features.py`.
-2. Implement calibrated classifier and Platt scaling in `src/invst/ml/classifier.py`.
-3. Implement walk-forward diagnostic scripts (`src/invst/ml/diagnostics.py`).
-4. Execute diagnostic validation script to verify Gate 1-8 evaluations:
-```bash
-python3 scripts/run_v031_diagnostics.py
-```
-
-### Step 5: FastAPI REST Backend Implementation
-```bash
-# Launch FastAPI development server
+# Step 5: Launch FastAPI Backend
 uvicorn invst.api.app:app --host 0.0.0.0 --port 8000 --reload
-# Verify OpenAPI documentation is live at: http://localhost:8000/docs
-```
+# Verify Swagger documentation at: http://localhost:8000/docs
 
-### Step 6: Vite + React 19 Frontend Deployment
-```bash
+# Step 6: Setup & Launch Frontend Client
 cd ../frontend
-
-# Install node dependencies
 npm install
-
-# Build production assets
 npm run build
-
-# Or launch local hot-reloading development server
 npm run dev -- --port 5173
 ```
 
-### Step 7: Verification Suite Execution
-```bash
-cd ../backend
-# Execute complete unit and integration test suite (must pass 100%)
-pytest tests/ -v
-```
-
 ---
-*End of Master Architecture Blueprint.*
+*End of ArthIQ Master Architecture & Implementation Blueprint.*

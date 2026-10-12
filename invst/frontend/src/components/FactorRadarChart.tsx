@@ -45,9 +45,9 @@ export const FactorRadarChart: React.FC<FactorRadarChartProps> = ({
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(' ');
 
-  // Benchmark Polygon Points (e.g. median 50/100)
+  const hasBenchmarks = data.length > 0 && data.every((datum) => typeof datum.benchmark === 'number');
   const benchPoints = data.map((d, i) => {
-    const ratio = (d.benchmark || 50) / 100;
+    const ratio = (d.benchmark ?? 0) / 100;
     const { x, y } = getCoordinates(i, ratio);
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(' ');
@@ -76,7 +76,7 @@ export const FactorRadarChart: React.FC<FactorRadarChartProps> = ({
   };
 
   return (
-    <div className="relative flex flex-col items-center justify-center p-2 select-none w-full">
+    <div className="factor-radar-chart relative flex flex-col items-center justify-center p-2 select-none w-full">
       <svg
         ref={svgRef}
         viewBox={`0 0 ${size} ${size}`}
@@ -87,18 +87,18 @@ export const FactorRadarChart: React.FC<FactorRadarChartProps> = ({
         <defs>
           {/* Radar area glowing gradient */}
           <radialGradient id="radarAreaGrad" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.45" />
-            <stop offset="60%" stopColor="#2563eb" stopOpacity="0.25" />
-            <stop offset="100%" stopColor="#1e3a8a" stopOpacity="0.05" />
+            <stop offset="0%" stopColor="var(--factor-primary, #38bdf8)" stopOpacity="0.3" />
+            <stop offset="60%" stopColor="var(--factor-secondary, #2563eb)" stopOpacity="0.16" />
+            <stop offset="100%" stopColor="var(--factor-secondary, #1e3a8a)" stopOpacity="0.03" />
           </radialGradient>
 
           {/* Node glow filter */}
           <filter id="radarNodeGlow" x="-50%" y="-50%" width="200%" height="200%">
-            <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor="#38bdf8" floodOpacity="0.9" />
+            <feDropShadow dx="0" dy="0" stdDeviation="2" floodColor="var(--factor-primary, #38bdf8)" floodOpacity="0.45" />
           </filter>
 
           <filter id="radarHoverNodeGlow" x="-50%" y="-50%" width="200%" height="200%">
-            <feDropShadow dx="0" dy="0" stdDeviation="5" floodColor="#38bdf8" floodOpacity="1" />
+            <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor="var(--factor-primary, #38bdf8)" floodOpacity="0.6" />
           </filter>
         </defs>
 
@@ -114,7 +114,7 @@ export const FactorRadarChart: React.FC<FactorRadarChartProps> = ({
               key={lIdx}
               points={ringPoints}
               fill="none"
-              stroke={lIdx === levels.length - 1 ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.06)'}
+              stroke="var(--factor-grid, rgba(255, 255, 255, 0.1))"
               strokeWidth={lIdx === levels.length - 1 ? '1.5' : '1'}
               strokeDasharray={lIdx === levels.length - 1 ? 'none' : '2 3'}
             />
@@ -132,7 +132,7 @@ export const FactorRadarChart: React.FC<FactorRadarChartProps> = ({
               y1={cy}
               x2={x}
               y2={y}
-              stroke={isHovered ? '#38bdf8' : 'rgba(255, 255, 255, 0.1)'}
+              stroke={isHovered ? 'var(--factor-primary, #38bdf8)' : 'var(--factor-grid, rgba(255, 255, 255, 0.1))'}
               strokeWidth={isHovered ? '2' : '1'}
               className="transition-all duration-200"
             />
@@ -140,7 +140,7 @@ export const FactorRadarChart: React.FC<FactorRadarChartProps> = ({
         })}
 
         {/* Benchmark Area (Dashed Slate) */}
-        <polygon
+        {hasBenchmarks && <polygon
           points={benchPoints}
           fill="none"
           stroke="#64748b"
@@ -148,13 +148,13 @@ export const FactorRadarChart: React.FC<FactorRadarChartProps> = ({
           strokeDasharray="3 3"
           opacity="0.6"
           pointerEvents="none"
-        />
+        />}
 
         {/* Stock Polygon Area */}
         <polygon
           points={stockPoints}
           fill="url(#radarAreaGrad)"
-          stroke="#38bdf8"
+          stroke="var(--factor-primary, #38bdf8)"
           strokeWidth="2.5"
           strokeLinejoin="round"
           className="transition-all duration-300"
@@ -201,7 +201,7 @@ export const FactorRadarChart: React.FC<FactorRadarChartProps> = ({
                   cy={y}
                   r="10"
                   fill="none"
-                  stroke="#38bdf8"
+                  stroke="var(--factor-primary, #38bdf8)"
                   strokeWidth="1.5"
                   opacity="0.8"
                   className="animate-ping"
@@ -213,8 +213,8 @@ export const FactorRadarChart: React.FC<FactorRadarChartProps> = ({
                 cx={x}
                 cy={y}
                 r={isHovered ? '7' : '4.5'}
-                fill={isHovered ? '#ffffff' : '#38bdf8'}
-                stroke="#080d1a"
+                fill={isHovered ? 'var(--panel, #ffffff)' : 'var(--factor-primary, #38bdf8)'}
+                stroke="var(--panel, #080d1a)"
                 strokeWidth={isHovered ? '2.5' : '1.5'}
                 filter={isHovered ? 'url(#radarHoverNodeGlow)' : 'url(#radarNodeGlow)'}
                 className="transition-all duration-200"
@@ -250,7 +250,7 @@ export const FactorRadarChart: React.FC<FactorRadarChartProps> = ({
                 fontSize="10"
                 fontFamily="sans-serif"
                 fontWeight={isHovered ? 'bold' : '600'}
-                fill={isHovered ? '#38bdf8' : '#94a3b8'}
+                fill={isHovered ? 'var(--factor-primary, #38bdf8)' : 'var(--muted-ink, #94a3b8)'}
                 className="transition-colors duration-200"
               >
                 {d.axis}
@@ -262,7 +262,7 @@ export const FactorRadarChart: React.FC<FactorRadarChartProps> = ({
                 fontSize="10"
                 fontFamily="monospace"
                 fontWeight="bold"
-                fill={isHovered ? '#ffffff' : d.score >= 70 ? '#10b981' : d.score >= 50 ? '#38bdf8' : '#f59e0b'}
+                fill={isHovered ? 'var(--ink, #ffffff)' : d.score >= 70 ? '#367458' : d.score >= 50 ? 'var(--factor-primary, #38bdf8)' : '#a5792d'}
               >
                 {d.score.toFixed(0)}
               </text>
@@ -278,10 +278,10 @@ export const FactorRadarChart: React.FC<FactorRadarChartProps> = ({
             <div className="flex items-center justify-center gap-1.5 font-bold font-mono text-sky-300">
               <Sparkles className="w-3.5 h-3.5 text-amber-400" />
               <span>{data[hoveredAxis].axis}: {data[hoveredAxis].score.toFixed(1)}/100</span>
-              <span className="text-[10px] text-slate-400 font-normal">
-                ({data[hoveredAxis].score >= (data[hoveredAxis].benchmark || 50) ? '+' : ''}
-                {(data[hoveredAxis].score - (data[hoveredAxis].benchmark || 50)).toFixed(0)} vs Median)
-              </span>
+              {hasBenchmarks && <span className="text-[10px] text-slate-400 font-normal">
+                ({data[hoveredAxis].score >= (data[hoveredAxis].benchmark ?? 0) ? '+' : ''}
+                {(data[hoveredAxis].score - (data[hoveredAxis].benchmark ?? 0)).toFixed(0)} vs benchmark)
+              </span>}
             </div>
             {data[hoveredAxis].description && (
               <p className="text-[10px] text-slate-300 mt-0.5 truncate font-sans">

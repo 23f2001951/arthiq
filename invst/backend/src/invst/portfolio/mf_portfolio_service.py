@@ -45,6 +45,285 @@ CATEGORY_BENCHMARKS: dict[str, dict[str, Any]] = {
 }
 
 
+def calculate_powerup_form(
+    fund_cagr_3y: float | None,
+    rolling_alpha: float,
+    downside_capture: float = 95.0,
+    expense_ratio: float = 0.65,
+) -> dict[str, Any]:
+    """Calculate PowerUp 4-tier form rating, badge, and power score.
+
+    Tiering:
+    - IN_FORM (🟢): Rolling Alpha >= +2.0% & Downside Capture <= 98%
+    - ON_TRACK (🔵): Rolling Alpha between -1.5% and +2.0% & Downside Capture <= 104%
+    - OFF_TRACK (🟡): Rolling Alpha between -4.5% and -1.5% OR Downside Capture 104-115%
+    - OUT_OF_FORM (🔴): Rolling Alpha < -4.5% OR Downside Capture > 115%
+    """
+    alpha = float(rolling_alpha or 0.0)
+    dc = float(downside_capture if downside_capture is not None else 95.0)
+
+    if alpha >= 2.0 and dc <= 98.0:
+        form_status = "IN_FORM"
+        badge_label = "In-Form"
+        badge_emoji = "🟢"
+        color = "#10B981"
+        power_score = min(100.0, max(85.0, 85.0 + (alpha - 2.0) * 2.5 - (dc - 80.0) * 0.3))
+        prescription = f"Prime compounding form. Generating +{alpha:.1f}% rolling alpha with robust {dc:.0f}% bear defense. Ride the winners and boost SIP."
+        action_type = "KEEP_INVESTING"
+    elif alpha >= -1.5 and dc <= 104.0:
+        form_status = "ON_TRACK"
+        badge_label = "On-Track"
+        badge_emoji = "🔵"
+        color = "#3B82F6"
+        power_score = min(84.0, max(65.0, 75.0 + alpha * 3.0 - (dc - 90.0) * 0.4))
+        prescription = f"Meeting benchmark targets within tolerance ({alpha:+.1f}% alpha, {dc:.0f}% downside capture). Maintain steady systematic allocation."
+        action_type = "MAINTAIN_HOLD"
+    elif alpha >= -4.5 or dc <= 115.0:
+        form_status = "OFF_TRACK"
+        badge_label = "Off-Track"
+        badge_emoji = "🟡"
+        color = "#F59E0B"
+        power_score = min(64.0, max(40.0, 52.0 + alpha * 3.0 - (dc - 100.0) * 0.5))
+        prescription = f"Performance drag observed ({alpha:.1f}% alpha lag vs index, {dc:.0f}% downside capture). Pause future SIP debits and redirect monthly flow to an In-Form peer."
+        action_type = "PAUSE_AND_REDIRECT"
+    else:
+        form_status = "OUT_OF_FORM"
+        badge_label = "Out-of-Form"
+        badge_emoji = "🔴"
+        color = "#EF4444"
+        power_score = min(39.0, max(10.0, 30.0 + alpha * 2.0))
+        prescription = f"Chronic lag trailing benchmark by {abs(alpha):.1f}% with weak drawdown protection ({dc:.0f}% capture). Initiate a full or partial switch to an elite category leader."
+        action_type = "EXIT_AND_SWITCH"
+
+    return {
+        "form_status": form_status,
+        "badge": form_status,
+        "badge_label": badge_label,
+        "badge_emoji": badge_emoji,
+        "color": color,
+        "power_score": round(power_score, 1),
+        "prescription": prescription,
+        "action_type": action_type,
+        "rolling_alpha_pct": round(alpha, 2),
+        "downside_capture": round(dc, 1),
+    }
+
+
+def calculate_power_age(
+    current_age: int = 28,
+    current_corpus: float = 0.0,
+    monthly_sip: float = 10000.0,
+    annual_step_up_pct: float = 10.0,
+    expected_cagr_pct: float = 13.0,
+    target_monthly_expense_today: float = 50000.0,
+    inflation_pct: float = 6.0,
+    swr_pct: float = 5.0,
+    max_age: int = 80,
+) -> dict[str, Any]:
+    """Calculate Power Age (FIRE / Financial Independence Freedom Age).
+
+    Computes:
+    - Power Age with step-up SIP (Accelerated)
+    - Power Age with flat SIP (Standard)
+    - Year-by-year corpus trajectory and FIRE threshold lines for visual charting.
+    """
+    cagr = max(0.01, expected_cagr_pct / 100.0)
+    monthly_r = (1.0 + cagr) ** (1.0 / 12.0) - 1.0
+    inf = max(0.0, inflation_pct / 100.0)
+    step_up = max(0.0, annual_step_up_pct / 100.0)
+    swr = max(0.01, swr_pct / 100.0)
+
+    trajectory: list[dict[str, Any]] = []
+    corpus = float(current_corpus)
+    cur_sip = float(monthly_sip)
+    power_age: int | None = None
+    target_corpus_at_power_age: float = 0.0
+    expenses_at_power_age: float = 0.0
+
+    flat_corpus = float(current_corpus)
+    standard_power_age: int | None = None
+
+    for year_idx in range(max_age - current_age + 1):
+        age = current_age + year_idx
+        ann_expense = (target_monthly_expense_today * 12.0) * ((1.0 + inf) ** year_idx)
+        monthly_expense_then = ann_expense / 12.0
+        fire_target = ann_expense / swr
+
+        is_free = corpus >= fire_target
+        if is_free and power_age is None:
+            power_age = age
+            target_corpus_at_power_age = round(corpus, 2)
+            expenses_at_power_age = round(monthly_expense_then, 2)
+
+        is_flat_free = flat_corpus >= fire_target
+        if is_flat_free and standard_power_age is None:
+            standard_power_age = age
+
+        trajectory.append({
+            "age": age,
+            "year": datetime.date.today().year + year_idx,
+            "accumulated_corpus": round(corpus, 2),
+            "flat_sip_corpus": round(flat_corpus, 2),
+            "target_fire_corpus": round(fire_target, 2),
+            "monthly_expenses": round(monthly_expense_then, 2),
+            "annual_expenses": round(ann_expense, 2),
+            "is_financially_free": is_free,
+        })
+
+        for _ in range(12):
+            corpus = (corpus + cur_sip) * (1.0 + monthly_r)
+            flat_corpus = (flat_corpus + monthly_sip) * (1.0 + monthly_r)
+
+        cur_sip *= (1.0 + step_up)
+
+    if power_age is None:
+        power_age = max_age
+        target_corpus_at_power_age = round(corpus, 2)
+        expenses_at_power_age = round((target_monthly_expense_today * 12.0) * ((1.0 + inf) ** (max_age - current_age)) / 12.0, 2)
+
+    if standard_power_age is None:
+        standard_power_age = max_age
+
+    years_to_freedom = max(0, power_age - current_age)
+    years_saved_by_step_up = max(0, standard_power_age - power_age)
+    monthly_passive_income_at_freedom = round(target_corpus_at_power_age * swr / 12.0, 2)
+
+    return {
+        "current_age": current_age,
+        "power_age": power_age,
+        "standard_power_age": standard_power_age,
+        "years_to_freedom": years_to_freedom,
+        "years_saved_by_step_up": years_saved_by_step_up,
+        "corpus_at_power_age": target_corpus_at_power_age,
+        "monthly_expenses_at_power_age": expenses_at_power_age,
+        "monthly_passive_income_swp": monthly_passive_income_at_freedom,
+        "financial_freedom_year": datetime.date.today().year + years_to_freedom,
+        "assumptions": {
+            "current_corpus": round(current_corpus, 2),
+            "monthly_sip": round(monthly_sip, 2),
+            "annual_step_up_pct": annual_step_up_pct,
+            "expected_cagr_pct": expected_cagr_pct,
+            "target_monthly_expense_today": target_monthly_expense_today,
+            "inflation_pct": inflation_pct,
+            "swr_pct": swr_pct,
+        },
+        "trajectory": trajectory,
+    }
+
+
+_CATEGORY_RANKS_CACHE: dict[str, Any] = {
+    "timestamp": None,
+    "ranks_by_code": {},
+}
+
+
+def get_category_ranks_map(force_refresh: bool = False, conn: Any | None = None) -> dict[int, dict[str, Any]]:
+    """Compute and cache institutional category ranking for all mutual fund schemes.
+
+    Ranking methodology:
+    - 60% weight on 3Y CAGR (fallback to 1Y return or baseline)
+    - 25% weight on CRISIL Star Rating (1 to 5 stars)
+    - 15% weight on Expense Ratio efficiency (lower TER gets higher score)
+    """
+    import time
+    now = time.time()
+    if not force_refresh and _CATEGORY_RANKS_CACHE["timestamp"] and (now - _CATEGORY_RANKS_CACHE["timestamp"] < 3600):
+        return _CATEGORY_RANKS_CACHE["ranks_by_code"]
+
+    close_conn = False
+    if conn is None:
+        conn = get_db_connection()
+        close_conn = True
+
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT s.scheme_code, s.scheme_name, s.category, s.crisil_rating, s.expense_ratio,
+                   (SELECT nav FROM mf_nav_history h1 WHERE h1.scheme_code = s.scheme_code ORDER BY nav_date DESC LIMIT 1) as latest_nav,
+                   (SELECT nav FROM mf_nav_history h2 WHERE h2.scheme_code = s.scheme_code AND nav_date <= date('2026-09-28', '-3 years') ORDER BY nav_date DESC LIMIT 1) as nav_3y_ago,
+                   (SELECT nav FROM mf_nav_history h3 WHERE h3.scheme_code = s.scheme_code AND nav_date <= date('2026-09-28', '-1 year') ORDER BY nav_date DESC LIMIT 1) as nav_1y_ago
+            FROM mf_schemes s;
+        """)
+        rows = cur.fetchall()
+        from collections import defaultdict
+        by_cat = defaultdict(list)
+        for r in rows:
+            sc = int(r[0])
+            name = str(r[1])
+            cat = str(r[2]) if r[2] else "Equity: Flexi Cap"
+            star = int(r[3]) if r[3] else 3
+            ter = float(r[4]) if r[4] else 0.70
+            l_nav = float(r[5]) if r[5] else None
+            nav_3y = float(r[6]) if r[6] else None
+            nav_1y = float(r[7]) if r[7] else None
+
+            cagr_3y = None
+            if l_nav and nav_3y and nav_3y > 0:
+                cagr_3y = (l_nav / nav_3y) ** (1.0 / 3.0) - 1.0
+            elif l_nav and nav_1y and nav_1y > 0:
+                cagr_3y = (l_nav / nav_1y) - 1.0
+            else:
+                cagr_3y = 0.12
+
+            cagr_3y_pct = round(cagr_3y * 100, 2)
+            # Institutional score: 60% 3Y return + 25% CRISIL rating (scaled) - 15% TER (scaled)
+            score = (cagr_3y_pct * 0.60) + (star * 5.0 * 0.25) - (ter * 10.0 * 0.15)
+            by_cat[cat].append({
+                "scheme_code": sc,
+                "scheme_name": name,
+                "category": cat,
+                "cagr_3y_pct": cagr_3y_pct,
+                "crisil_rating": star,
+                "expense_ratio": ter,
+                "score": score,
+            })
+
+        ranks_by_code: dict[int, dict[str, Any]] = {}
+        for cat, list_schemes in by_cat.items():
+            list_schemes.sort(key=lambda x: x["score"], reverse=True)
+            tot = len(list_schemes)
+            for idx, item in enumerate(list_schemes, 1):
+                pct = round(((tot - idx + 1) / tot) * 100, 1)
+                q = "Q1" if idx <= max(1, int(round(tot * 0.25))) else ("Q2" if idx <= max(2, int(round(tot * 0.50))) else ("Q3" if idx <= max(3, int(round(tot * 0.75))) else "Q4"))
+                if idx == 1:
+                    badge = f"👑 #1 of {tot} (Top {round(100.0 / tot)}%)"
+                elif idx <= 3:
+                    badge = f"⭐ #{idx} of {tot} ({q})"
+                else:
+                    badge = f"#{idx} of {tot} ({q})"
+
+                cat_clean = cat.replace("Equity: ", "").replace("Debt: ", "").replace("Hybrid: ", "")
+                label = f"Rank #{idx} of {tot} in {cat_clean}"
+
+                rank_obj = {
+                    "scheme_code": item["scheme_code"],
+                    "category": cat,
+                    "rank": idx,
+                    "total_in_category": tot,
+                    "percentile": pct,
+                    "quartile": q,
+                    "rank_badge": badge,
+                    "rank_label": label,
+                    "trailing_3y_cagr": item["cagr_3y_pct"],
+                    "crisil_rating": item["crisil_rating"],
+                    "expense_ratio": item["expense_ratio"],
+                }
+                ranks_by_code[item["scheme_code"]] = rank_obj
+
+        _CATEGORY_RANKS_CACHE["timestamp"] = now
+        _CATEGORY_RANKS_CACHE["ranks_by_code"] = ranks_by_code
+        return ranks_by_code
+    finally:
+        if close_conn:
+            conn.close()
+
+
+def get_scheme_category_rank(scheme_code: int, category: str | None = None, conn: Any | None = None) -> dict[str, Any] | None:
+    """Return category ranking object for a specific scheme code."""
+    ranks_map = get_category_ranks_map(conn=conn)
+    return ranks_map.get(int(scheme_code))
+
+
 def get_switch_options_for_scheme(
     scheme_code: int,
     category: str,
@@ -52,23 +331,85 @@ def get_switch_options_for_scheme(
     current_val: float,
     monthly_amt: float,
 ) -> list[dict[str, Any]]:
-    """Generate 2-3 superior category replacement options with detailed execution instructions."""
+    """Generate 2-3 superior replacement options prioritizing same-AMC (instant, zero-fee, same folio) and industry peers."""
     cur = conn.cursor()
+
+    # Look up current fund details
     cur.execute(
-        """
-        SELECT scheme_code, scheme_name, fund_house, category, expense_ratio, crisil_rating, aum_cr
-        FROM mf_schemes
-        WHERE category = ? AND scheme_code != ?
-        ORDER BY crisil_rating DESC, aum_cr DESC
-        LIMIT 3;
-        """,
-        (category, scheme_code),
+        "SELECT fund_house, category, scheme_name FROM mf_schemes WHERE scheme_code = ?;",
+        (scheme_code,),
     )
-    rows = cur.fetchall()
-    if not rows:
+    sch_row = cur.fetchone()
+    current_house = sch_row[0] if sch_row and sch_row[0] else ""
+    current_cat = sch_row[1] if sch_row and sch_row[1] else category
+    current_name = sch_row[2] if sch_row and sch_row[2] else f"Scheme {scheme_code}"
+    base_name = current_name.split(" - ")[0].strip().lower()
+
+    same_amc_rows: list[Any] = []
+    if current_house:
+        # 1. Fetch top candidates from SAME Fund House (Intra-AMC: fast, zero fee, same folio)
         cur.execute(
             """
-            SELECT scheme_code, scheme_name, fund_house, category, expense_ratio, crisil_rating, aum_cr
+            SELECT scheme_code, scheme_name, fund_house, category, expense_ratio, crisil_rating, aum_cr, plan_type
+            FROM mf_schemes
+            WHERE fund_house = ? AND scheme_code != ?
+            ORDER BY
+                CASE WHEN plan_type = 'Direct' THEN 1 ELSE 2 END ASC,
+                CASE WHEN option_type = 'Growth' THEN 1 ELSE 2 END ASC,
+                crisil_rating DESC,
+                aum_cr DESC;
+            """,
+            (current_house, scheme_code),
+        )
+        amc_candidates = cur.fetchall()
+        for cand in amc_candidates:
+            c_base = cand[1].split(" - ")[0].strip().lower()
+            if c_base != base_name:
+                same_amc_rows.append(cand)
+            if len(same_amc_rows) >= 2:
+                break
+
+    # 2. Fetch top candidates from Other Fund Houses (Inter-AMC: best-in-class industry peers)
+    seen_codes = {r[0] for r in same_amc_rows} | {scheme_code}
+    cur.execute(
+        """
+        SELECT scheme_code, scheme_name, fund_house, category, expense_ratio, crisil_rating, aum_cr, plan_type
+        FROM mf_schemes
+        WHERE category = ? AND fund_house != ? AND scheme_code != ?
+        ORDER BY
+            CASE WHEN plan_type = 'Direct' THEN 1 ELSE 2 END ASC,
+            CASE WHEN option_type = 'Growth' THEN 1 ELSE 2 END ASC,
+            crisil_rating DESC,
+            aum_cr DESC
+        LIMIT 2;
+        """,
+        (current_cat, current_house, scheme_code),
+    )
+    inter_amc_rows = [r for r in cur.fetchall() if r[0] not in seen_codes]
+
+    if not inter_amc_rows:
+        cur.execute(
+            """
+            SELECT scheme_code, scheme_name, fund_house, category, expense_ratio, crisil_rating, aum_cr, plan_type
+            FROM mf_schemes
+            WHERE fund_house != ? AND scheme_code != ?
+            ORDER BY
+                CASE WHEN plan_type = 'Direct' THEN 1 ELSE 2 END ASC,
+                crisil_rating DESC,
+                aum_cr DESC
+            LIMIT 2;
+            """,
+            (current_house, scheme_code),
+        )
+        inter_amc_rows = [r for r in cur.fetchall() if r[0] not in seen_codes]
+
+    # Combine: prioritize Same AMC candidates first (easiest & free), then top industry peers
+    combined_rows = [(r, True) for r in same_amc_rows[:2]] + [(r, False) for r in inter_amc_rows[:2]]
+    if not combined_rows:
+        # Fallback to any top fund if nothing found
+        cur.execute(
+            """
+            SELECT scheme_code, scheme_name, fund_house, category, expense_ratio, crisil_rating, aum_cr, plan_type
             FROM mf_schemes
             WHERE scheme_code != ?
             ORDER BY crisil_rating DESC, aum_cr DESC
@@ -76,15 +417,18 @@ def get_switch_options_for_scheme(
             """,
             (scheme_code,),
         )
-        rows = cur.fetchall()
+        combined_rows = [(r, False) for r in cur.fetchall()]
 
     options = []
     # Current fund holdings for overlap calculation
     cur.execute("SELECT symbol, weight_pct FROM mf_holdings WHERE scheme_code = ?;", (scheme_code,))
     curr_h = {hr[0]: float(hr[1]) for hr in cur.fetchall() if hr[0]}
 
-    for r in rows:
-        cand_code, cand_name, cand_house, cand_cat, cand_ter, cand_rating, cand_aum = r
+    val_display = max(current_val, 1000.0)
+    amt_display = max(monthly_amt, 1000.0)
+
+    for r, is_same_amc in combined_rows[:3]:
+        cand_code, cand_name, cand_house, cand_cat, cand_ter, cand_rating, cand_aum = r[:7]
         cand_nav = get_scheme_nav_series(cand_code)
         cand_trailing = calculate_trailing_returns(cand_nav)
         cand_risk = calculate_risk_metrics(cand_nav)
@@ -101,8 +445,23 @@ def get_switch_options_for_scheme(
             common = set(curr_h.keys()) & set(cand_h.keys())
             overlap_pct = round(sum(min(curr_h[s], cand_h[s]) for s in common), 1)
 
-        val_display = max(current_val, 1000.0)
-        amt_display = max(monthly_amt, 1000.0)
+        switch_type = "intra_amc" if is_same_amc else "inter_amc"
+        switch_badge = "⚡ Same AMC (Instant & Free Switch)" if is_same_amc else "🏦 Inter-AMC Switch"
+
+        if is_same_amc:
+            amc_adv = f"Free direct internal folio transfer within {cand_house}. Zero transaction fees, same-day/T+1 settlement, and no bank transit required."
+            turnaround = "T+1 (Same/Next Business Day)"
+            tax_fee = "Zero switch fees or platform charges. Same folio retained. Standard capital gains rules apply (no exit loads if held >1yr)."
+            exec_full = f"⚡ Free Intra-AMC Switch: Submit an internal switch request within {cand_house}. 100% of units (₹{val_display:,.0f}) shift directly into {cand_name} at next-day NAV with zero transaction fees and no bank transit."
+            exec_pause = f"⚡ Same AMC Redirect: Pause current SIP immediately. Leave existing ₹{val_display:,.0f} in {current_name} to compound undisturbed, and start a fresh internal SIP of ₹{amt_display:,.0f}/mo in {cand_name} under the same folio."
+            exec_partial = f"⚡ Partial Intra-AMC Switch: Switch 50% (₹{val_display * 0.5:,.0f}) into {cand_name} within the same AMC folio, while redirecting monthly SIP of ₹{amt_display:,.0f} for balanced diversification."
+        else:
+            amc_adv = f"Requires redeeming units from {current_house} to your bank account (T+2), followed by a fresh investment in {cand_house}."
+            turnaround = "T+3 (Redemption + Re-investment)"
+            tax_fee = f"Redemption proceeds credit to bank account first. Ensure fresh SIP mandate is set up for {cand_house}."
+            exec_full = f"🏦 Inter-AMC Switch: Redeem 100% of units (₹{val_display:,.0f}) from {current_house} to your registered bank account (T+2), then deploy capital into {cand_name} ({cand_house}) under a new folio. Transfer monthly SIP."
+            exec_pause = f"🏦 Inter-AMC Redirect: Pause current SIP to avoid exit loads / short-term capital gains. Leave existing ₹{val_display:,.0f} invested to compound undisturbed, and set up a new monthly SIP of ₹{amt_display:,.0f} in {cand_name} ({cand_house})."
+            exec_partial = f"🏦 Partial Inter-AMC Rebalance: Redeem 50% (₹{val_display * 0.5:,.0f}) to bank account and deploy into {cand_name} ({cand_house}), while redirecting monthly SIP to optimize risk."
 
         options.append({
             "target_scheme_code": cand_code,
@@ -114,11 +473,17 @@ def get_switch_options_for_scheme(
             "trailing_3y_cagr": cand_3y_pct,
             "downside_capture": cand_downside,
             "overlap_with_current_pct": overlap_pct,
+            "is_same_amc": is_same_amc,
+            "switch_type": switch_type,
+            "switch_badge": switch_badge,
+            "amc_advantage": amc_adv,
+            "turnaround_time": turnaround,
+            "tax_and_fee_guidance": tax_fee,
             "comparison_advantage": f"{cand_3y_pct:.1f}% 3Y CAGR, {cand_ter_val:.2f}% TER, {cand_downside:.0f}% downside capture, {overlap_pct}% stock overlap",
             "execution_modes": {
-                "full_switch": f"Redeem 100% of accumulated units (₹{val_display:,.0f}) from current fund and shift capital into {cand_name}. Transfer ongoing monthly SIP of ₹{amt_display:,.0f}.",
-                "pause_and_redirect": f"Pause current SIP immediately to avoid exit loads / STCG taxes. Leave existing ₹{val_display:,.0f} invested to compound undisturbed, and start a fresh monthly SIP of ₹{amt_display:,.0f} in {cand_name}.",
-                "partial_switch": f"Redeem 50% (₹{val_display * 0.5:,.0f}) and shift into {cand_name} while redirecting ongoing SIP to achieve superior balance and minimize drawdown risk.",
+                "full_switch": exec_full,
+                "pause_and_redirect": exec_pause,
+                "partial_switch": exec_partial,
             },
         })
     return options
@@ -238,12 +603,15 @@ def add_or_update_sip(
     custom_units: float | None = None,
     skipped_months: list[str] | None = None,
     paid_months: list[str] | None = None,
+    sip_id: str | None = None,
 ) -> str:
     """Register or update an active, paused, or closed SIP schedule.
 
     Dynamically derives sip_day from start_date if not provided.
     Expands monthly installments across paid months (omitting skipped months)
     to calculate precise ledger XIRR matching official AMFI/Groww statements.
+    If sip_id is provided and exists, performs an in-place update and recalibrates
+    transactions and check-ins without disrupting the rest of the portfolio.
     """
     conn = get_db_connection()
     try:
@@ -258,27 +626,60 @@ def add_or_update_sip(
 
         e_date = datetime.datetime.strptime(end_date[:10], "%Y-%m-%d").date() if end_date else datetime.date.today()
 
-        sip_id = f"sip_{uuid.uuid4().hex[:10]}"
-        cur.execute(
-            """
-            INSERT INTO mf_sip_schedules (
-                id, portfolio_id, scheme_code, folio_number, amount,
-                sip_day, start_date, end_date, status, step_up_pct
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-            """,
-            (
-                sip_id,
-                portfolio_id,
-                scheme_code,
-                folio_number or f"FOLIO-{scheme_code}-01",
-                amount,
-                sip_day,
-                start_date,
-                end_date,
-                status.upper(),
-                step_up_pct,
-            ),
-        )
+        # Check if updating an existing SIP
+        is_existing = False
+        if sip_id:
+            cur.execute("SELECT id FROM mf_sip_schedules WHERE id = ? AND portfolio_id = ?;", (sip_id, portfolio_id))
+            if cur.fetchone():
+                is_existing = True
+
+        if is_existing:
+            cur.execute(
+                """
+                UPDATE mf_sip_schedules
+                SET scheme_code = ?, folio_number = ?, amount = ?,
+                    sip_day = ?, start_date = ?, end_date = ?, status = ?, step_up_pct = ?
+                WHERE id = ? AND portfolio_id = ?;
+                """,
+                (
+                    scheme_code,
+                    folio_number or f"FOLIO-{scheme_code}-01",
+                    amount,
+                    sip_day,
+                    start_date,
+                    end_date,
+                    status.upper(),
+                    step_up_pct,
+                    sip_id,
+                    portfolio_id,
+                ),
+            )
+            # Remove previous transactions and checkins generated for this specific sip_id
+            cur.execute("DELETE FROM mf_transactions WHERE sip_id = ? AND portfolio_id = ?;", (sip_id, portfolio_id))
+            cur.execute("DELETE FROM mf_sip_checkins WHERE sip_id = ? AND portfolio_id = ?;", (sip_id, portfolio_id))
+        else:
+            if not sip_id:
+                sip_id = f"sip_{uuid.uuid4().hex[:10]}"
+            cur.execute(
+                """
+                INSERT INTO mf_sip_schedules (
+                    id, portfolio_id, scheme_code, folio_number, amount,
+                    sip_day, start_date, end_date, status, step_up_pct
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                """,
+                (
+                    sip_id,
+                    portfolio_id,
+                    scheme_code,
+                    folio_number or f"FOLIO-{scheme_code}-01",
+                    amount,
+                    sip_day,
+                    start_date,
+                    end_date,
+                    status.upper(),
+                    step_up_pct,
+                ),
+            )
 
         # 1. Build all monthly installment dates from start_date to end_date (or today)
         month_dates: list[datetime.date] = []
@@ -305,26 +706,25 @@ def add_or_update_sip(
         if not paid_dates:
             paid_dates = [month_dates[0]]
 
-        # Record checkin audit trail if explicitly provided by user checklist
-        if skipped_months or paid_months:
-            for m in month_dates:
-                m_str = m.strftime("%Y-%m")
-                m_date_str = m.strftime("%Y-%m-%d")
-                c_id = f"chk_{sip_id}_{m_date_str}"
-                chk_status = "SKIPPED" if m_str in skipped_set else "PAID"
-                cur.execute(
-                    """
-                    INSERT INTO mf_sip_checkins (
-                        id, portfolio_id, sip_id, scheme_code, due_date, status, confirmed_date, amount, notes
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT (id) DO UPDATE SET
-                        status = excluded.status,
-                        confirmed_date = excluded.confirmed_date,
-                        notes = excluded.notes,
-                        updated_at = CURRENT_TIMESTAMP;
-                    """,
-                    (c_id, portfolio_id, sip_id, scheme_code, m_date_str, chk_status, m_date_str, amount, f"Marked {chk_status} during schedule setup"),
-                )
+        # Record checkin audit trail for all installments up to schedule end
+        for m in month_dates:
+            m_str = m.strftime("%Y-%m")
+            m_date_str = m.strftime("%Y-%m-%d")
+            c_id = f"chk_{sip_id}_{m_date_str}"
+            chk_status = "SKIPPED" if m_str in skipped_set else "PAID"
+            cur.execute(
+                """
+                INSERT INTO mf_sip_checkins (
+                    id, portfolio_id, sip_id, scheme_code, due_date, status, confirmed_date, amount, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (id) DO UPDATE SET
+                    status = excluded.status,
+                    confirmed_date = excluded.confirmed_date,
+                    notes = excluded.notes,
+                    updated_at = CURRENT_TIMESTAMP;
+                """,
+                (c_id, portfolio_id, sip_id, scheme_code, m_date_str, chk_status, m_date_str, amount, f"Marked {chk_status} during schedule setup"),
+            )
 
         # 3. Generate granular monthly transaction cash flows
         if auto_generate_tx or (custom_invested is not None and custom_invested > 0):
@@ -436,6 +836,26 @@ def add_or_update_sip(
         conn.close()
 
 
+def delete_sip_from_portfolio(portfolio_id: str, sip_id: str) -> bool:
+    """Safely delete an individual SIP schedule and its associated transactions and check-ins.
+
+    Guarantees strict isolation: affects ONLY the targeted sip_id and portfolio_id,
+    leaving the rest of the user's portfolio and holdings completely intact.
+    """
+    conn = get_db_connection()
+    try:
+        _ensure_checkin_tables(conn)
+        cur = conn.cursor()
+        cur.execute("DELETE FROM mf_transactions WHERE sip_id = ? AND portfolio_id = ?;", (sip_id, portfolio_id))
+        cur.execute("DELETE FROM mf_sip_checkins WHERE sip_id = ? AND portfolio_id = ?;", (sip_id, portfolio_id))
+        cur.execute("DELETE FROM mf_sip_schedules WHERE id = ? AND portfolio_id = ?;", (sip_id, portfolio_id))
+        deleted = cur.rowcount > 0
+        conn.commit()
+        return deleted
+    finally:
+        conn.close()
+
+
 def get_pending_sip_checkins(portfolio_id: str, conn: Any | None = None) -> list[dict[str, Any]]:
     """Identify scheduled SIP installments requiring monthly user confirmation (Paid vs Skipped)."""
     close_conn = False
@@ -461,7 +881,7 @@ def get_pending_sip_checkins(portfolio_id: str, conn: Any | None = None) -> list
         if not schedules:
             return []
 
-        # Fetch existing check-in records for this portfolio
+        # Fetch existing check-in records for this portfolio (both exact date and YYYY-MM)
         cur.execute(
             """
             SELECT sip_id, due_date, status, confirmed_date
@@ -470,7 +890,30 @@ def get_pending_sip_checkins(portfolio_id: str, conn: Any | None = None) -> list
             """,
             (portfolio_id,),
         )
-        existing_checkins = {(r[0], str(r[1])[:10]): r[2] for r in cur.fetchall()}
+        existing_checkins: dict[tuple[str, str], str] = {}
+        for r in cur.fetchall():
+            s_id_chk = r[0]
+            d_chk = str(r[1])[:10]
+            ym_chk = d_chk[:7]
+            existing_checkins[(s_id_chk, d_chk)] = r[2]
+            existing_checkins[(s_id_chk, ym_chk)] = r[2]
+
+        # Also fetch existing transactions so executed installments are never prompted as pending
+        cur.execute(
+            """
+            SELECT sip_id, tx_date, substr(tx_date, 1, 7)
+            FROM mf_transactions
+            WHERE portfolio_id = ? AND sip_id IS NOT NULL;
+            """,
+            (portfolio_id,),
+        )
+        existing_txs: set[tuple[str, str]] = set()
+        for r in cur.fetchall():
+            s_id_tx = r[0]
+            d_tx = str(r[1])[:10]
+            ym_tx = str(r[2])
+            existing_txs.add((s_id_tx, d_tx))
+            existing_txs.add((s_id_tx, ym_tx))
 
         today = datetime.date.today()
         pending_list = []
@@ -506,27 +949,34 @@ def get_pending_sip_checkins(portfolio_id: str, conn: Any | None = None) -> list
                     continue
 
                 due_d_str = due_d.strftime("%Y-%m-%d")
+                month_str = due_d.strftime("%Y-%m")
                 chk_key = (s_id, due_d_str)
+                chk_key_month = (s_id, month_str)
 
-                if chk_key not in existing_checkins:
-                    if today >= due_d:
-                        m_label = due_d.strftime("%B %Y")
-                        day_ordinal = f"{due_d.day}{'th' if 11 <= due_d.day <= 13 else {1:'st', 2:'nd', 3:'rd'}.get(due_d.day % 10, 'th')}"
-                        pending_list.append({
-                            "checkin_id": f"chk_{s_id}_{due_d_str}",
-                            "sip_id": s_id,
-                            "scheme_code": sc,
-                            "scheme_name": s_name,
-                            "category": cat,
-                            "monthly_amount": float(amt),
-                            "sip_day": sip_day_clamped,
-                            "due_date": due_d_str,
-                            "month_label": m_label,
-                            "status": "PENDING",
-                            "is_overdue": (today - due_d).days >= 1,
-                            "days_ago": (today - due_d).days,
-                            "question": f"Did your scheduled SIP of ₹{amt:,.0f} for {s_name} debit on {day_ordinal} {due_d.strftime('%b')}?",
-                        })
+                # If already recorded or already transacted in transaction ledger, skip
+                if chk_key in existing_checkins or chk_key_month in existing_checkins:
+                    continue
+                if chk_key in existing_txs or chk_key_month in existing_txs:
+                    continue
+
+                if today >= due_d:
+                    m_label = due_d.strftime("%B %Y")
+                    day_ordinal = f"{due_d.day}{'th' if 11 <= due_d.day <= 13 else {1:'st', 2:'nd', 3:'rd'}.get(due_d.day % 10, 'th')}"
+                    pending_list.append({
+                        "checkin_id": f"chk_{s_id}_{due_d_str}",
+                        "sip_id": s_id,
+                        "scheme_code": sc,
+                        "scheme_name": s_name,
+                        "category": cat,
+                        "monthly_amount": float(amt),
+                        "sip_day": sip_day_clamped,
+                        "due_date": due_d_str,
+                        "month_label": m_label,
+                        "status": "PENDING",
+                        "is_overdue": (today - due_d).days >= 1,
+                        "days_ago": (today - due_d).days,
+                        "question": f"Did your scheduled SIP of ₹{amt:,.0f} for {s_name} debit on {day_ordinal} {due_d.strftime('%b')}?",
+                    })
 
         pending_list.sort(key=lambda x: x["due_date"], reverse=True)
         return pending_list
@@ -849,6 +1299,7 @@ def analyze_mf_portfolio(portfolio_id: str) -> dict[str, Any]:
             if cur_val > 0:
                 scheme_cfs.append((latest_date, cur_val))
             data["xirr_pct"] = calculate_xirr(scheme_cfs)
+            data["category_rank"] = get_scheme_category_rank(sc, data.get("category"), conn=conn)
 
             total_current_value += cur_val
 
@@ -919,6 +1370,13 @@ def analyze_mf_portfolio(portfolio_id: str) -> dict[str, Any]:
                 "profit": round(sip_current_value - sip_invested, 2),
                 "xirr_pct": sip_xirr,
             }
+
+            # Fetch any recorded skipped months for this SIP to pre-fill checklists on edit
+            cur.execute(
+                "SELECT due_date FROM mf_sip_checkins WHERE sip_id = ? AND status = 'SKIPPED' ORDER BY due_date ASC;",
+                (s_id,),
+            )
+            sip_data["skipped_months"] = [str(r[0])[:7] for r in cur.fetchall()]
 
             if status.upper() == "ACTIVE":
                 # 1. Cash flow discipline & skipped installments analysis
@@ -1042,6 +1500,15 @@ def analyze_mf_portfolio(portfolio_id: str) -> dict[str, Any]:
                         f"Continue systematic compounding."
                     )
 
+                powerup_badge = calculate_powerup_form(
+                    fund_cagr_3y=ret_3y_pct,
+                    rolling_alpha=rolling_alpha,
+                    downside_capture=downside_cap,
+                    expense_ratio=expense_ratio,
+                )
+                sip_data["powerup_form"] = powerup_badge
+                sip_data["power_score"] = powerup_badge["power_score"]
+
                 sip_data["health_status"] = alert
                 sip_data["action_type"] = action_type
                 sip_data["action_headline"] = action_headline
@@ -1056,6 +1523,7 @@ def analyze_mf_portfolio(portfolio_id: str) -> dict[str, Any]:
                     current_val=sip_current_value,
                     monthly_amt=amt,
                 )
+                sip_data["category_rank"] = get_scheme_category_rank(sc, sch_info.get("category"), conn=conn)
                 active_sips.append(sip_data)
             else:
                 # Closed / Paused SIP Diagnostic (Post-Mortem)
@@ -1131,6 +1599,26 @@ def analyze_mf_portfolio(portfolio_id: str) -> dict[str, Any]:
                         },
                     },
                 }
+                closed_alpha = round(compound_cagr - bench["expected_3y_cagr"], 2)
+                closed_powerup = calculate_powerup_form(
+                    fund_cagr_3y=compound_cagr,
+                    rolling_alpha=closed_alpha,
+                    downside_capture=95.0,
+                    expense_ratio=0.65,
+                )
+                sip_data["powerup_form"] = closed_powerup
+                sip_data["power_score"] = closed_powerup["power_score"]
+                sip_data["rolling_alpha_pct"] = closed_alpha
+                sip_data["downside_capture"] = 95.0
+                sip_data["switch_options"] = get_switch_options_for_scheme(
+                    scheme_code=sc,
+                    category=cat,
+                    conn=conn,
+                    current_val=sip_current_value,
+                    monthly_amt=amt,
+                )
+                sip_data["category_rank"] = get_scheme_category_rank(sc, cat, conn=conn)
+
                 closed_sips.append(sip_data)
 
         # 5. Asset Allocation breakdown
@@ -1147,6 +1635,100 @@ def analyze_mf_portfolio(portfolio_id: str) -> dict[str, Any]:
         # 6. Cross-fund Overlap Matrix
         overlap_res = calculate_portfolio_overlap(holdings_by_scheme_for_overlap) if len(holdings_by_scheme_for_overlap) > 1 else {}
 
+        # 7. PowerUp Portfolio Form Index & Capital Distribution
+        all_sips_for_power = active_sips + closed_sips
+        in_form_val = sum(s["current_value"] for s in all_sips_for_power if s.get("powerup_form", {}).get("form_status") == "IN_FORM")
+        on_track_val = sum(s["current_value"] for s in all_sips_for_power if s.get("powerup_form", {}).get("form_status") == "ON_TRACK")
+        off_track_val = sum(s["current_value"] for s in all_sips_for_power if s.get("powerup_form", {}).get("form_status") == "OFF_TRACK")
+        out_of_form_val = sum(s["current_value"] for s in all_sips_for_power if s.get("powerup_form", {}).get("form_status") == "OUT_OF_FORM")
+
+        tot_val = max(1.0, total_current_value)
+        pct_in_form = round(in_form_val / tot_val * 100.0, 1)
+        pct_on_track = round(on_track_val / tot_val * 100.0, 1)
+        pct_off_track = round(off_track_val / tot_val * 100.0, 1)
+        pct_out_of_form = round(out_of_form_val / tot_val * 100.0, 1)
+
+        portfolio_power_score = round(
+            (pct_in_form * 1.0) + (pct_on_track * 0.75) + (pct_off_track * 0.40) + (pct_out_of_form * 0.10),
+            1,
+        ) if total_current_value > 0 else 0.0
+
+        if portfolio_power_score >= 80:
+            verdict = "🟢 Elite Power Allocation"
+            verdict_desc = "Your capital is strongly concentrated in market-beating, in-form funds with superior downside defense."
+        elif portfolio_power_score >= 65:
+            verdict = "🔵 Healthy Momentum"
+            verdict_desc = "Good overall alignment. Minor fine-tuning can eliminate trailing drag."
+        elif portfolio_power_score >= 50:
+            verdict = "🟡 Tuning Recommended"
+            verdict_desc = "Noticeable capital drag detected in underperforming holdings. Rebalancing advised."
+        else:
+            verdict = "🔴 High Capital Drag"
+            verdict_desc = "A significant portion of your wealth is trailing its benchmark. Switch to high-alpha peers."
+
+        # Actionable rebalancing plan prioritizing same-AMC options
+        rebalancing_plan = []
+        for s in all_sips_for_power:
+            st = s.get("powerup_form", {}).get("form_status")
+            if st in ("OFF_TRACK", "OUT_OF_FORM"):
+                sw_opts = s.get("switch_options") or []
+                rebalancing_plan.append({
+                    "sip_id": s.get("sip_id"),
+                    "scheme_code": s["scheme_code"],
+                    "scheme_name": s["scheme_name"],
+                    "current_value": s["current_value"],
+                    "monthly_amount": s.get("monthly_amount", 0.0),
+                    "status": s.get("status", "ACTIVE"),
+                    "form_status": st,
+                    "alpha_lag_pct": abs(s.get("rolling_alpha_pct", 0.0)),
+                    "prescription": s.get("powerup_form", {}).get("prescription", ""),
+                    "action_mode": "PAUSE_AND_REDIRECT" if s["current_value"] > 30000 else "FULL_SWITCH",
+                    "recommended_switch": sw_opts[0] if sw_opts else None,
+                    "all_switches": sw_opts,
+                })
+
+        powerup_summary = {
+            "portfolio_power_score": portfolio_power_score,
+            "verdict": verdict,
+            "verdict_description": verdict_desc,
+            "capital_distribution": {
+                "in_form_pct": pct_in_form,
+                "in_form_val": round(in_form_val, 2),
+                "on_track_pct": pct_on_track,
+                "on_track_val": round(on_track_val, 2),
+                "off_track_pct": pct_off_track,
+                "off_track_val": round(off_track_val, 2),
+                "out_of_form_pct": pct_out_of_form,
+                "out_of_form_val": round(out_of_form_val, 2),
+                "drag_capital_val": round(off_track_val + out_of_form_val, 2),
+                "drag_capital_pct": round(pct_off_track + pct_out_of_form, 1),
+            },
+            "rebalancing_plan": rebalancing_plan,
+            "has_rebalancing_needed": len(rebalancing_plan) > 0,
+        }
+
+        # 8. Baseline Power Age projection
+        monthly_run_rate = sum(s["monthly_amount"] for s in active_sips)
+        default_expense = max(15000.0, monthly_run_rate * 2.5) if monthly_run_rate > 0 else 30000.0
+        power_age_proj = calculate_power_age(
+            current_age=28,
+            current_corpus=total_current_value,
+            monthly_sip=max(1000.0, monthly_run_rate),
+            annual_step_up_pct=10.0,
+            expected_cagr_pct=13.0,
+            target_monthly_expense_today=default_expense,
+            inflation_pct=6.0,
+            swr_pct=5.0,
+        )
+
+        # Capital segmentation: Active SIPs capital vs Retained/Closed SIPs capital
+        active_invested = sum(s["total_invested"] for s in active_sips)
+        active_current_value = sum(s["current_value"] for s in active_sips)
+        closed_invested = sum(s["total_invested"] for s in closed_sips)
+        closed_current_value = sum(s["current_value"] for s in closed_sips)
+        active_profit = round(active_current_value - active_invested, 2)
+        closed_profit = round(closed_current_value - closed_invested, 2)
+
         return {
             "portfolio_id": portfolio_id,
             "portfolio_name": port_name,
@@ -1158,6 +1740,12 @@ def analyze_mf_portfolio(portfolio_id: str) -> dict[str, Any]:
             "absolute_return_pct": round(total_abs_ret, 2),
             "portfolio_xirr_pct": portfolio_xirr,
             "monthly_sip_run_rate": sum(s["monthly_amount"] for s in active_sips),
+            "active_invested": round(active_invested, 2),
+            "active_current_value": round(active_current_value, 2),
+            "closed_invested": round(closed_invested, 2),
+            "closed_current_value": round(closed_current_value, 2),
+            "active_profit": active_profit,
+            "closed_profit": closed_profit,
             "active_sips_count": len(active_sips),
             "closed_sips_count": len(closed_sips),
             "active_sips": active_sips,
@@ -1167,6 +1755,8 @@ def analyze_mf_portfolio(portfolio_id: str) -> dict[str, Any]:
             "overlap_analysis": overlap_res,
             "pending_checkins": pending_checkins,
             "checkin_history": checkin_history,
+            "powerup_summary": powerup_summary,
+            "power_age_projection": power_age_proj,
         }
     finally:
         conn.close()
@@ -1299,24 +1889,49 @@ def predict_mf_portfolio_health(portfolio_id: str) -> dict[str, Any]:
         verdict = "REQUIRES_REALIGNMENT"
         rating_label = "Sub-Optimal Allocation / High Redundancy"
 
-    # Forward Projections
+    # Forward Projections with realistic compounding, inflation adjustment, and step-up comparison
     cur_val = diag["current_value"]
     m_sip = diag["monthly_sip_run_rate"]
+    inf_rate = 6.0
 
     scenarios = []
     for yrs in [3, 5, 10]:
-        def _sim(cagr_pct: float) -> float:
+        def _sim(cagr_pct: float, step_up_pct: float = 0.0) -> dict[str, float]:
             r = (1.0 + (cagr_pct / 100.0)) ** (1.0 / 12.0) - 1.0
             val = cur_val
-            for _ in range(yrs * 12):
-                val = (val + m_sip) * (1.0 + r)
-            return round(val, 0)
+            sip_flow = m_sip
+            invested = cur_val
+            for _ in range(yrs):
+                for _ in range(12):
+                    val = (val + sip_flow) * (1.0 + r)
+                    invested += sip_flow
+                if step_up_pct > 0:
+                    sip_flow *= (1.0 + (step_up_pct / 100.0))
+            real_val = val / ((1.0 + (inf_rate / 100.0)) ** yrs)
+            return {
+                "nominal": round(val, 0),
+                "real": round(real_val, 0),
+                "invested": round(invested, 0),
+                "gain": round(max(0.0, val - invested), 0),
+                "multiplier": round(val / invested, 2) if invested > 0 else 1.0,
+            }
+
+        base_res = _sim(13.0, step_up_pct=0.0)
+        step_res = _sim(13.0, step_up_pct=10.0)
+        bull_res = _sim(16.0, step_up_pct=0.0)
+        bear_res = _sim(8.5, step_up_pct=0.0)
 
         scenarios.append({
             "horizon_years": yrs,
-            "base_case_13pct": _sim(13.0),
-            "bull_case_16pct": _sim(16.0),
-            "bear_case_8pct": _sim(8.5),
+            "base_case_13pct": base_res["nominal"],
+            "base_case_real_power": base_res["real"],
+            "base_case_with_10pct_stepup": step_res["nominal"],
+            "total_invested_flat": base_res["invested"],
+            "wealth_gain_flat": base_res["gain"],
+            "wealth_multiplier": base_res["multiplier"],
+            "stepup_advantage": round(step_res["nominal"] - base_res["nominal"], 0),
+            "bull_case_16pct": bull_res["nominal"],
+            "bear_case_8pct": bear_res["nominal"],
         })
 
     # Actionable switching items list

@@ -3,14 +3,19 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
+from invst.api.routes import _resolve_market_asof
 from invst.ingestion.live_market_feed import (
+    TICKER_TAPE_CACHE,
     fetch_live_macro_pulse,
     fetch_live_ticker_snapshot,
+    fetch_live_ticker_tape,
     ingest_live_ticker_to_db,
 )
 from invst.ingestion.news_rss import fetch_google_news_rss, parse_rss_xml
+from invst.intraday.scheduler import job_daily_market_data
 
 
 def test_fetch_live_macro_pulse_fallback():
@@ -86,6 +91,59 @@ def test_fetch_live_ticker_snapshot_db_fallback():
         assert len(snapshot["headlines"]) == 1
         assert snapshot["headlines"][0]["headline"] == "TCS wins massive cloud transformation deal"
         assert snapshot["is_live"] is False
+
+
+def test_fetch_live_ticker_tape_omits_unavailable_quotes():
+    """Never substitute plausible-looking prices when neither live nor DB data exists."""
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE daily_prices (symbol TEXT, trade_date DATE, close REAL)")
+    with patch("invst.ingestion.live_market_feed.yf", None), patch.dict(
+        TICKER_TAPE_CACHE, {"timestamp": 0.0, "data": []}
+    ):
+        quotes = fetch_live_ticker_tape(conn=conn, fetch_live=False)
+    assert quotes == []
+
+
+def test_fetch_live_ticker_tape_marks_database_prices_as_snapshots():
+    """Database close prices carry their actual trade date and source metadata."""
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE daily_prices (symbol TEXT, trade_date DATE, close REAL)")
+    conn.execute("INSERT INTO daily_prices VALUES ('NIFTY50', '2026-10-09', 25123.4)")
+    conn.execute("INSERT INTO daily_prices VALUES ('NIFTY50', '2026-10-08', 25000.0)")
+    with patch("invst.ingestion.live_market_feed.yf", None), patch.dict(
+        TICKER_TAPE_CACHE, {"timestamp": 0.0, "data": []}
+    ):
+        quotes = fetch_live_ticker_tape(conn=conn, fetch_live=False)
+    nifty = next(item for item in quotes if item["symbol"] == "NIFTY 50")
+    assert nifty["price_val"] == 25123.4
+    assert nifty["last_updated"] == "2026-10-09"
+    assert nifty["is_live"] is False
+    assert nifty["price_source"] == "daily_close"
+
+
+def test_resolve_market_asof_uses_latest_stored_session_and_preserves_explicit_cutoff():
+    """Default recommendation dates follow stored sessions; explicit PIT dates remain fixed."""
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE daily_prices (symbol TEXT, trade_date DATE, close REAL)")
+    conn.execute("INSERT INTO daily_prices VALUES ('NIFTY500', '2026-10-09', 100.0)")
+    conn.execute("INSERT INTO daily_prices VALUES ('RELIANCE', '2026-10-12', 101.0)")
+    assert _resolve_market_asof(conn).isoformat() == "2026-10-12"
+    assert _resolve_market_asof(conn, "2024-03-31").isoformat() == "2024-03-31"
+
+
+def test_daily_market_refresh_skips_an_already_ingested_session():
+    """The scheduled close-price task is idempotent for an existing source date."""
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE daily_prices (trade_date DATE, source TEXT)")
+    conn.execute("INSERT INTO daily_prices VALUES ('2026-10-12', 'nse_bhavcopy')")
+    with (
+        patch("invst.intraday.scheduler._conn_factory", return_value=conn),
+        patch("invst.intraday.scheduler._now_ist") as now_ist,
+        patch("invst.ingestion.nse_bhavcopy.ingest_nse_bhavcopy") as ingest,
+    ):
+        now_ist.return_value = datetime.fromisoformat("2026-10-12T18:00:00+05:30")
+        job_daily_market_data()
+        ingest.assert_not_called()
 
 
 def test_ingest_live_ticker_to_db():

@@ -251,8 +251,6 @@ export const BacktestView: React.FC = () => {
               subtitle={`Benchmark: ${formatPct(m.benchmark_cagr)}`}
               icon={TrendingUp}
               variant={m.cagr && m.benchmark_cagr && m.cagr > m.benchmark_cagr ? 'success' : 'default'}
-              sparkline={true}
-              trendPositive={m.cagr !== null && m.cagr > 0}
             />
             <KPICard
               label="Sharpe Ratio"
@@ -260,7 +258,6 @@ export const BacktestView: React.FC = () => {
               subtitle={`Benchmark: ${formatNum(m.benchmark_sharpe)}`}
               icon={Award}
               variant="purple"
-              sparkline={false}
             />
             <KPICard
               label="Max Drawdown"
@@ -268,8 +265,6 @@ export const BacktestView: React.FC = () => {
               subtitle={`Benchmark: ${formatPct(m.benchmark_max_drawdown)}`}
               icon={ShieldAlert}
               variant={m.max_drawdown && m.max_drawdown > -0.2 ? 'success' : 'warning'}
-              sparkline={true}
-              trendPositive={m.max_drawdown !== null && m.max_drawdown > -0.2}
             />
             <KPICard
               label="Sortino Ratio"
@@ -277,7 +272,6 @@ export const BacktestView: React.FC = () => {
               subtitle={`Calmar: ${formatNum(m.calmar)}`}
               icon={Activity}
               variant="info"
-              sparkline={false}
             />
           </div>
 

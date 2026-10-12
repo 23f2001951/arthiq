@@ -102,7 +102,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
     },
   ];
 
-  const investorSections: { category: string; items: NavItemConfig[] }[] = [
+   const investorSections: { category: string; items: NavItemConfig[] }[] = [
     {
       category: 'Intelligence',
       items: [
@@ -112,6 +112,13 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
           badge: 'LIVE',
           badgeColor: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
           icon: LayoutDashboard,
+        },
+        {
+          id: 'intraday',
+          label: 'Intraday',
+          badge: 'SIGNAL',
+          badgeColor: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
+          icon: Sparkles,
         },
         {
           id: 'recommendations',
@@ -143,6 +150,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
         },
       ],
     },
+
     {
       category: 'Portfolio & Risk',
       items: [

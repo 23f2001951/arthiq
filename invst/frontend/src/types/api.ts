@@ -20,7 +20,7 @@ export interface MainPortfolioPositionItem {
   action_verdict: string;
   action_badge: string;
   action_rationale: string;
-  expected_return_12m: number;
+  expected_return_12m: number | null;
 }
 
 export interface MainPortfolioStatus {
@@ -51,17 +51,33 @@ export interface MacroPulseItem {
 
 export interface DashboardResponse {
   latest_asof: string | null;
+  market_data_asof?: string | null;
   target_holdings: number;
   max_stock_cap: number;
   holdings: HoldingItem[];
   sector_allocations: Record<string, number>;
   main_portfolio?: MainPortfolioStatus | null;
   macro_pulse?: MacroPulseItem | null;
+  market_snapshot?: {
+    asof_date?: string | null;
+    advancing: number;
+    declining: number;
+    unchanged: number;
+    new_52w_highs: number;
+    new_52w_lows: number;
+    year_range_symbols: number;
+    excluded_extreme_moves?: number;
+    top_movers: { symbol: string; change_pct: number; close: number }[];
+    sector_performance: { sector: string; change_pct: number }[];
+  } | null;
 }
 
 export interface StockRecommendationItem {
   symbol: string;
   sector: string;
+  latest_close?: number | null;
+  one_year_return_pct?: number | null;
+  price_trend?: number[];
   action: string;
   target_weight: number;
   current_weight: number;
@@ -76,6 +92,7 @@ export interface StockRecommendationItem {
   arth_score?: number;
   signal_agreement?: number;
   conviction_tier?: string;
+  alpha_model_available?: boolean;
   quality_metrics: Record<string, number | null>;
   valuation_metrics: Record<string, number | null>;
   risk_metrics: Record<string, number | null>;
@@ -85,6 +102,23 @@ export interface RecommendationsResponse {
   asof_date: string;
   count: number;
   recommendations: StockRecommendationItem[];
+}
+
+export interface CorporateEventItem {
+  event_id: string;
+  symbol: string;
+  event_type: string;
+  headline: string;
+  direction: string;
+  materiality_score: number;
+  confidence_score: number;
+  affected_factors: string[];
+  effective_date: string;
+}
+
+export interface EventsFeedResponse {
+  count: number;
+  events: CorporateEventItem[];
 }
 
 export interface QuickPickItem {
@@ -105,6 +139,7 @@ export interface QuickPickItem {
   arth_score?: number;
   signal_agreement?: number;
   conviction_tier?: string;
+  alpha_model_available?: boolean;
   model_name?: string;
   horizon_days?: number;
   multi_horizon_projections?: Record<string, number>;
@@ -248,6 +283,8 @@ export interface TickerItem {
   category?: string;
   raw_symbol?: string;
   last_updated?: string;
+  is_live?: boolean;
+  price_source?: 'live' | 'daily_close' | 'unavailable' | string;
 }
 
 export interface HorizonProjection {
@@ -607,6 +644,35 @@ export interface UpdateProfileRequest {
 // -----------------------------------------------------------------------------
 // Mutual Funds & SIP Types
 // -----------------------------------------------------------------------------
+export interface MFPowerUpForm {
+  form_status: 'IN_FORM' | 'ON_TRACK' | 'OFF_TRACK' | 'OUT_OF_FORM';
+  badge?: 'IN_FORM' | 'ON_TRACK' | 'OFF_TRACK' | 'OUT_OF_FORM';
+  badge_label: string;
+  badge_emoji: string;
+  color?: string;
+  power_score: number;
+  prescription?: string;
+  action_type?: string;
+  rolling_alpha_pct?: number;
+  downside_capture?: number;
+  is_drag_capital?: boolean;
+  momentum_desc?: string;
+}
+
+export interface MFCategoryRank {
+  scheme_code: number;
+  category: string;
+  rank: number;
+  total_in_category: number;
+  percentile: number;
+  quartile: string;
+  rank_badge: string;
+  rank_label: string;
+  trailing_3y_cagr?: number | null;
+  crisil_rating?: number | null;
+  expense_ratio?: number | null;
+}
+
 export interface MFSchemeSearchItem {
   scheme_code: number;
   isin?: string;
@@ -619,6 +685,9 @@ export interface MFSchemeSearchItem {
   aum_cr?: number;
   crisil_rating?: number;
   risk_level?: string;
+  current_nav?: number;
+  powerup_form?: MFPowerUpForm;
+  category_rank?: MFCategoryRank;
 }
 
 export interface MFHoldingItem {
@@ -669,6 +738,8 @@ export interface MFSchemeDetailResponse {
   };
   top_holdings: MFHoldingItem[];
   analyst_conviction?: MFAnalystConviction;
+  powerup_form?: MFPowerUpForm;
+  category_rank?: MFCategoryRank;
 }
 
 export interface MFRollingReturnsResponse {
@@ -734,6 +805,7 @@ export interface MFRecommendationResponse {
     risk_level?: string;
     fund_manager?: string;
     rationale: string;
+    category_rank?: MFCategoryRank;
   }>;
   total_monthly_sip: number;
   wealth_projection: {
@@ -829,6 +901,12 @@ export interface MFSwitchOption {
   downside_capture?: number | null;
   overlap_with_current_pct: number;
   comparison_advantage: string;
+  is_same_amc?: boolean;
+  switch_type?: 'intra_amc' | 'inter_amc';
+  switch_badge?: string;
+  amc_advantage?: string;
+  turnaround_time?: string;
+  tax_and_fee_guidance?: string;
   execution_modes: {
     full_switch: string;
     pause_and_redirect: string;
@@ -869,10 +947,14 @@ export interface MFActiveSIPDiagnostic {
   cashflow_diagnostic_memo?: string;
   trailing_3y_cagr?: number | null;
   switch_options?: MFSwitchOption[];
+  skipped_months?: string[];
   next_sip_date?: string;
   days_until_next_sip?: number;
   current_month_checkin_status?: 'PAID' | 'SKIPPED' | 'PENDING' | 'UPCOMING';
   due_date_current_month?: string;
+  powerup_form?: MFPowerUpForm;
+  power_score?: number;
+  category_rank?: MFCategoryRank;
 }
 
 export interface MFSIPCheckinItem {
@@ -910,10 +992,18 @@ export interface MFPortfolioResponse {
   last_saved_at?: string | null;
   total_invested: number;
   current_value: number;
+  total_portfolio_value?: number;
   unrealized_profit: number;
   absolute_return_pct: number;
   portfolio_xirr_pct?: number | null;
   monthly_sip_run_rate: number;
+  total_monthly_sip?: number;
+  active_invested?: number;
+  active_current_value?: number;
+  closed_invested?: number;
+  closed_current_value?: number;
+  active_profit?: number;
+  closed_profit?: number;
   active_sips_count: number;
   closed_sips_count: number;
   active_sips: MFActiveSIPDiagnostic[];
@@ -935,6 +1025,10 @@ export interface MFPortfolioResponse {
     current_value: number;
     profit: number;
     xirr_pct?: number | null;
+    skipped_months?: string[];
+    powerup_form?: MFPowerUpForm;
+    power_score?: number;
+    category_rank?: MFCategoryRank;
     post_mortem?: {
       stopped_date?: string;
       months_inactive: number;
@@ -956,23 +1050,7 @@ export interface MFPortfolioResponse {
         title: string;
         description: string;
         rationale: string;
-        options: Array<{
-          target_scheme_code: number;
-          target_scheme_name: string;
-          fund_house: string;
-          category: string;
-          crisil_rating: number;
-          expense_ratio: number;
-          trailing_3y_cagr: number;
-          downside_capture: number;
-          overlap_with_current_pct: number;
-          comparison_advantage: string;
-          execution_modes: {
-            full_switch: string;
-            pause_and_redirect: string;
-            partial_switch: string;
-          };
-        }>;
+        options: MFSwitchOption[];
       };
       let_compound?: {
         action: string;
@@ -1000,6 +1078,7 @@ export interface MFPortfolioResponse {
     unrealized_profit: number;
     abs_return_pct: number;
     xirr_pct?: number | null;
+    category_rank?: MFCategoryRank;
   }>;
   asset_allocation: Record<string, number>;
   overlap_analysis: {
@@ -1014,6 +1093,86 @@ export interface MFPortfolioResponse {
       avg_weight_pct: number;
     }>;
   };
+  powerup_summary?: MFPowerUpSummary;
+  power_age_projection?: MFPowerAgeResponse;
+}
+
+export interface MFPowerUpSummary {
+  portfolio_power_score: number;
+  verdict: string;
+  verdict_description: string;
+  capital_distribution: {
+    in_form_pct: number;
+    in_form_val: number;
+    on_track_pct: number;
+    on_track_val: number;
+    off_track_pct: number;
+    off_track_val: number;
+    out_of_form_pct: number;
+    out_of_form_val: number;
+    drag_capital_val: number;
+    drag_capital_pct: number;
+  };
+  rebalancing_plan: Array<{
+    sip_id?: string;
+    scheme_code: number;
+    scheme_name: string;
+    current_value: number;
+    monthly_amount: number;
+    status: string;
+    form_status: string;
+    alpha_lag_pct: number;
+    prescription: string;
+    action_mode: string;
+    recommended_switch?: MFSwitchOption;
+    all_switches: MFSwitchOption[];
+  }>;
+  has_rebalancing_needed: boolean;
+}
+
+export interface MFPowerAgePoint {
+  age: number;
+  year: number;
+  accumulated_corpus: number;
+  flat_sip_corpus: number;
+  target_fire_corpus: number;
+  monthly_expenses: number;
+  annual_expenses: number;
+  is_financially_free: boolean;
+}
+
+export interface MFPowerAgeResponse {
+  current_age: number;
+  power_age: number;
+  standard_power_age: number;
+  years_to_freedom: number;
+  years_saved_by_step_up: number;
+  corpus_at_power_age: number;
+  monthly_expenses_at_power_age: number;
+  monthly_passive_income_swp: number;
+  financial_freedom_year: number;
+  assumptions: {
+    current_corpus: number;
+    monthly_sip: number;
+    annual_step_up_pct: number;
+    expected_cagr_pct: number;
+    target_monthly_expense_today: number;
+    inflation_pct: number;
+    swr_pct: number;
+  };
+  trajectory: MFPowerAgePoint[];
+}
+
+export interface MFPowerAgeRequest {
+  current_age?: number;
+  current_corpus?: number;
+  monthly_sip?: number;
+  annual_step_up_pct?: number;
+  expected_cagr_pct?: number;
+  target_monthly_expense_today?: number;
+  inflation_pct?: number;
+  swr_pct?: number;
+  max_age?: number;
 }
 
 export interface MFPortfolioHealthResponse {
@@ -1055,6 +1214,12 @@ export interface MFPortfolioHealthResponse {
     base_case_13pct: number;
     bull_case_16pct: number;
     bear_case_8pct: number;
+    base_case_real_power?: number;
+    base_case_with_10pct_stepup?: number;
+    total_invested_flat?: number;
+    wealth_gain_flat?: number;
+    wealth_multiplier?: number;
+    stepup_advantage?: number;
   }>;
   actionable_recommendations: string[];
 }

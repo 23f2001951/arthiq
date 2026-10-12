@@ -6,6 +6,20 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+class MFCategoryRank(BaseModel):
+    scheme_code: int
+    category: str
+    rank: int
+    total_in_category: int
+    percentile: float
+    quartile: str
+    rank_badge: str
+    rank_label: str
+    trailing_3y_cagr: float | None = None
+    crisil_rating: int | None = None
+    expense_ratio: float | None = None
+
+
 class MFSchemeSearchItem(BaseModel):
     scheme_code: int
     isin: str | None = None
@@ -18,6 +32,9 @@ class MFSchemeSearchItem(BaseModel):
     aum_cr: float | None = None
     crisil_rating: int | None = None
     risk_level: str | None = None
+    current_nav: float | None = None
+    powerup_form: dict[str, Any] | None = None
+    category_rank: MFCategoryRank | None = None
 
 
 class MFHoldingItem(BaseModel):
@@ -47,6 +64,8 @@ class MFSchemeDetailResponse(BaseModel):
     trailing_returns: dict[str, float | None]
     top_holdings: list[MFHoldingItem] = []
     analyst_conviction: dict[str, Any] | None = None
+    powerup_form: dict[str, Any] = {}
+    category_rank: MFCategoryRank | None = None
 
 
 class MFRollingReturnsResponse(BaseModel):
@@ -131,6 +150,7 @@ class MFAddSIPRequest(BaseModel):
     custom_units: float | None = None
     skipped_months: list[str] = Field(default_factory=list, description="List of YYYY-MM strings that were skipped")
     paid_months: list[str] = Field(default_factory=list, description="List of YYYY-MM strings that were paid")
+    sip_id: str | None = Field(default=None, description="Optional existing SIP schedule ID for in-place edit")
 
 
 class MFResumeSIPRequest(BaseModel):
@@ -155,6 +175,12 @@ class MFPortfolioResponse(BaseModel):
     absolute_return_pct: float
     portfolio_xirr_pct: float | None = None
     monthly_sip_run_rate: float
+    active_invested: float | None = None
+    active_current_value: float | None = None
+    closed_invested: float | None = None
+    closed_current_value: float | None = None
+    active_profit: float | None = None
+    closed_profit: float | None = None
     active_sips_count: int
     closed_sips_count: int
     active_sips: list[dict[str, Any]] = []
@@ -164,6 +190,8 @@ class MFPortfolioResponse(BaseModel):
     overlap_analysis: dict[str, Any] = {}
     pending_checkins: list[dict[str, Any]] = []
     checkin_history: list[dict[str, Any]] = []
+    powerup_summary: dict[str, Any] = {}
+    power_age_projection: dict[str, Any] = {}
 
 
 class MFSavePortfolioRequest(BaseModel):
@@ -182,3 +210,29 @@ class MFSIPCheckinRequest(BaseModel):
 class MFSIPBatchCheckinRequest(BaseModel):
     action: str = Field(default="MARK_ALL_PAID", description="MARK_ALL_PAID, MARK_ALL_SKIPPED")
     checkin_ids: list[str] = []
+
+
+class MFPowerAgeRequest(BaseModel):
+    current_age: int = Field(default=28, ge=18, le=75)
+    current_corpus: float = Field(default=0.0, ge=0.0)
+    monthly_sip: float = Field(default=10000.0, ge=0.0)
+    annual_step_up_pct: float = Field(default=10.0, ge=0.0, le=50.0)
+    expected_cagr_pct: float = Field(default=13.0, ge=1.0, le=35.0)
+    target_monthly_expense_today: float = Field(default=50000.0, ge=5000.0)
+    inflation_pct: float = Field(default=6.0, ge=0.0, le=20.0)
+    swr_pct: float = Field(default=5.0, ge=2.0, le=10.0)
+    max_age: int = Field(default=80, ge=50, le=100)
+
+
+class MFPowerAgeResponse(BaseModel):
+    current_age: int
+    power_age: int
+    standard_power_age: int
+    years_to_freedom: int
+    years_saved_by_step_up: int
+    corpus_at_power_age: float
+    monthly_expenses_at_power_age: float
+    monthly_passive_income_swp: float
+    financial_freedom_year: int
+    assumptions: dict[str, Any]
+    trajectory: list[dict[str, Any]]
