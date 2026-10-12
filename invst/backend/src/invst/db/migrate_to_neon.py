@@ -44,6 +44,20 @@ MIGRATION_TABLES = [
     "portfolio_history",
     "model_predictions",
     "scorecards_v2_history",
+    # Mutual-fund tables: parents before dependent ledger/history tables.
+    "mf_schemes",
+    "user_mf_portfolios",
+    "mf_holdings",
+    "mf_nav_history",
+    "mf_sip_schedules",
+    "mf_transactions",
+    "mf_sip_checkins",
+    # Intraday tables: signal parents before their append-only events.
+    "intraday_signals",
+    "signal_events",
+    "intraday_candles",
+    "volume_seasonality",
+    "intraday_universe",
 ]
 
 # Tables with SERIAL primary key sequences that need realignment after migration
@@ -51,6 +65,11 @@ SERIAL_TABLES = {
     "users": "id",
     "fundamentals_pit": "id",
     "corporate_actions_pit": "id",
+    "mf_holdings": "id",
+    "intraday_signals": "id",
+    "signal_events": "id",
+    "intraday_candles": "id",
+    "intraday_universe": "id",
 }
 
 
@@ -83,7 +102,8 @@ def reset_sequences(pg_conn: Any) -> None:
                 f"""
                 SELECT setval(
                     pg_get_serial_sequence('{table}', '{col}'),
-                    COALESCE((SELECT MAX({col}) FROM {table}), 1)
+                    GREATEST(COALESCE((SELECT MAX({col}) FROM {table}), 1), 1),
+                    (SELECT COUNT(*) > 0 FROM {table})
                 );
                 """
             )

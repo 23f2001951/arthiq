@@ -25,7 +25,11 @@ from invst.config import get_config
 
 logger = logging.getLogger("invst.auth")
 
-JWT_SECRET_KEY = os.getenv("ARTH_IQ_SECRET_KEY", "arth-iq-super-secret-production-jwt-key-2025")
+JWT_SECRET_KEY = os.getenv("ARTH_IQ_SECRET_KEY")
+if not JWT_SECRET_KEY:
+    if os.getenv("VERCEL") == "1":
+        raise RuntimeError("ARTH_IQ_SECRET_KEY must be configured in production.")
+    JWT_SECRET_KEY = secrets.token_urlsafe(32)
 JWT_ALGORITHM = "HS256"
 
 # In-memory session fallback and token revocation store

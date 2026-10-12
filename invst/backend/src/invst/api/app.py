@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -29,10 +30,19 @@ def create_app() -> FastAPI:
         redoc_url="/redoc",
     )
 
-    # CORS configuration for frontend dev servers
+    # Set ARTH_IQ_CORS_ORIGINS to a comma-separated list of deployed frontend
+    # origins. Keep localhost as the development default.
+    cors_origins = [
+        origin.strip()
+        for origin in os.environ.get(
+            "ARTH_IQ_CORS_ORIGINS",
+            "http://localhost:5173,http://127.0.0.1:5173",
+        ).split(",")
+        if origin.strip()
+    ]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

@@ -234,3 +234,219 @@ CREATE TABLE IF NOT EXISTS schema_version (
     filename VARCHAR(255) NOT NULL,
     applied_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 18. Mutual fund scheme master and historical NAV data
+CREATE TABLE IF NOT EXISTS mf_schemes (
+    scheme_code INTEGER PRIMARY KEY,
+    isin TEXT,
+    scheme_name TEXT NOT NULL,
+    fund_house TEXT NOT NULL,
+    category TEXT NOT NULL,
+    plan_type TEXT NOT NULL DEFAULT 'Direct',
+    option_type TEXT NOT NULL DEFAULT 'Growth',
+    benchmark_index TEXT DEFAULT 'Nifty 500 TRI',
+    expense_ratio DOUBLE PRECISION,
+    aum_cr DOUBLE PRECISION,
+    fund_manager TEXT,
+    crisil_rating INTEGER,
+    risk_level TEXT DEFAULT 'Very High',
+    inception_date DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_mf_category ON mf_schemes(category);
+CREATE INDEX IF NOT EXISTS idx_mf_fund_house ON mf_schemes(fund_house);
+CREATE INDEX IF NOT EXISTS idx_mf_isin ON mf_schemes(isin);
+
+CREATE TABLE IF NOT EXISTS mf_nav_history (
+    scheme_code INTEGER NOT NULL REFERENCES mf_schemes(scheme_code) ON DELETE CASCADE,
+    nav_date DATE NOT NULL,
+    nav DOUBLE PRECISION NOT NULL,
+    PRIMARY KEY (scheme_code, nav_date)
+);
+CREATE INDEX IF NOT EXISTS idx_mf_nav_scheme_date ON mf_nav_history(scheme_code, nav_date DESC);
+
+CREATE TABLE IF NOT EXISTS mf_holdings (
+    id SERIAL PRIMARY KEY,
+    scheme_code INTEGER NOT NULL REFERENCES mf_schemes(scheme_code) ON DELETE CASCADE,
+    as_of_date DATE NOT NULL,
+    company_name TEXT NOT NULL,
+    symbol TEXT,
+    isin TEXT,
+    sector TEXT,
+    weight_pct DOUBLE PRECISION NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_mf_holdings_scheme ON mf_holdings(scheme_code, as_of_date);
+CREATE INDEX IF NOT EXISTS idx_mf_holdings_symbol ON mf_holdings(symbol);
+
+-- 19. User mutual-fund portfolios and SIP ledgers
+CREATE TABLE IF NOT EXISTS user_mf_portfolios (
+    id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    name TEXT NOT NULL DEFAULT 'My MF Portfolio',
+    notes TEXT,
+    last_saved_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_user_mf_portfolios_user ON user_mf_portfolios(user_id);
+
+CREATE TABLE IF NOT EXISTS mf_sip_schedules (
+    id TEXT PRIMARY KEY,
+    portfolio_id TEXT NOT NULL REFERENCES user_mf_portfolios(id) ON DELETE CASCADE,
+    scheme_code INTEGER NOT NULL REFERENCES mf_schemes(scheme_code),
+    folio_number TEXT,
+    amount DOUBLE PRECISION NOT NULL,
+    frequency TEXT DEFAULT 'MONTHLY',
+    sip_day INTEGER DEFAULT 5,
+    start_date DATE NOT NULL,
+    end_date DATE,
+    status TEXT NOT NULL DEFAULT 'ACTIVE',
+    step_up_pct DOUBLE PRECISION DEFAULT 0.0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_mf_sip_portfolio ON mf_sip_schedules(portfolio_id);
+CREATE INDEX IF NOT EXISTS idx_mf_sip_status ON mf_sip_schedules(status);
+
+CREATE TABLE IF NOT EXISTS mf_transactions (
+    id TEXT PRIMARY KEY,
+    portfolio_id TEXT NOT NULL REFERENCES user_mf_portfolios(id) ON DELETE CASCADE,
+    sip_id TEXT REFERENCES mf_sip_schedules(id) ON DELETE SET NULL,
+    scheme_code INTEGER NOT NULL REFERENCES mf_schemes(scheme_code),
+    tx_date DATE NOT NULL,
+    tx_type TEXT NOT NULL,
+    amount DOUBLE PRECISION NOT NULL,
+    units DOUBLE PRECISION NOT NULL,
+    nav DOUBLE PRECISION NOT NULL,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_mf_tx_portfolio ON mf_transactions(portfolio_id);
+CREATE INDEX IF NOT EXISTS idx_mf_tx_scheme ON mf_transactions(scheme_code);
+CREATE INDEX IF NOT EXISTS idx_mf_tx_date ON mf_transactions(tx_date);
+
+CREATE TABLE IF NOT EXISTS mf_sip_checkins (
+    id TEXT PRIMARY KEY,
+    portfolio_id TEXT NOT NULL REFERENCES user_mf_portfolios(id) ON DELETE CASCADE,
+    sip_id TEXT NOT NULL REFERENCES mf_sip_schedules(id) ON DELETE CASCADE,
+    scheme_code INTEGER NOT NULL,
+    due_date DATE NOT NULL,
+    status TEXT NOT NULL,
+    confirmed_date DATE,
+    amount DOUBLE PRECISION NOT NULL,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mf_sip_checkin_unique ON mf_sip_checkins(sip_id, due_date);
+CREATE INDEX IF NOT EXISTS idx_mf_sip_checkin_portfolio ON mf_sip_checkins(portfolio_id);
+
+-- 20. Intraday signals, event history, cached candles, and universe
+CREATE TABLE IF NOT EXISTS intraday_signals (
+    id SERIAL PRIMARY KEY,
+    strategy_id TEXT NOT NULL,
+    strategy_ver TEXT NOT NULL DEFAULT '1.0.0',
+    mode TEXT NOT NULL CHECK (mode IN ('live', 'paper', 'backtest')),
+    symbol TEXT NOT NULL,
+    exchange TEXT NOT NULL DEFAULT 'NSE',
+    signal_type TEXT NOT NULL CHECK (signal_type IN ('LONG', 'SHORT')),
+    signal_candle_time TIMESTAMP NOT NULL,
+    entry_time TIMESTAMP,
+    timeframe TEXT NOT NULL DEFAULT '15m',
+    entry_price DOUBLE PRECISION,
+    sl_price DOUBLE PRECISION NOT NULL,
+    target_1 DOUBLE PRECISION NOT NULL,
+    target_2 DOUBLE PRECISION,
+    sl_distance DOUBLE PRECISION NOT NULL,
+    reward_risk DOUBLE PRECISION NOT NULL,
+    atr_at_signal DOUBLE PRECISION NOT NULL,
+    confidence_score INTEGER,
+    pillars_met TEXT NOT NULL,
+    regime TEXT NOT NULL,
+    vwap_at_signal DOUBLE PRECISION,
+    pivot_at_signal DOUBLE PRECISION,
+    pdh DOUBLE PRECISION,
+    pdl DOUBLE PRECISION,
+    todvol_ratio DOUBLE PRECISION,
+    rationale TEXT,
+    feature_snapshot TEXT,
+    feasibility_ok INTEGER NOT NULL DEFAULT 1,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS signal_events (
+    id SERIAL PRIMARY KEY,
+    signal_id INTEGER NOT NULL REFERENCES intraday_signals(id),
+    event_type TEXT NOT NULL,
+    event_time TIMESTAMP NOT NULL,
+    price DOUBLE PRECISION,
+    shares INTEGER,
+    gross_pnl_r DOUBLE PRECISION,
+    fees_r DOUBLE PRECISION,
+    net_pnl_r DOUBLE PRECISION,
+    mfe_r DOUBLE PRECISION,
+    mae_r DOUBLE PRECISION,
+    note TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS intraday_candles (
+    id SERIAL PRIMARY KEY,
+    symbol TEXT NOT NULL,
+    timeframe TEXT NOT NULL DEFAULT '15m',
+    candle_time TIMESTAMP NOT NULL,
+    open DOUBLE PRECISION,
+    high DOUBLE PRECISION,
+    low DOUBLE PRECISION,
+    close DOUBLE PRECISION,
+    volume INTEGER,
+    ema21 DOUBLE PRECISION,
+    supertrend DOUBLE PRECISION,
+    supertrend_dir INTEGER,
+    atr14 DOUBLE PRECISION,
+    adx14_nifty DOUBLE PRECISION,
+    vwap DOUBLE PRECISION,
+    obv DOUBLE PRECISION,
+    todvol_ratio DOUBLE PRECISION,
+    is_warmup INTEGER DEFAULT 0,
+    UNIQUE (symbol, timeframe, candle_time)
+);
+
+CREATE TABLE IF NOT EXISTS volume_seasonality (
+    symbol TEXT NOT NULL,
+    time_slot TEXT NOT NULL,
+    session_count INTEGER NOT NULL,
+    mean_volume DOUBLE PRECISION NOT NULL,
+    updated_at DATE NOT NULL,
+    PRIMARY KEY (symbol, time_slot)
+);
+
+CREATE TABLE IF NOT EXISTS intraday_universe (
+    id SERIAL PRIMARY KEY,
+    date DATE NOT NULL,
+    symbol TEXT NOT NULL,
+    iss_score DOUBLE PRECISION NOT NULL,
+    liquidity_score DOUBLE PRECISION,
+    atr_pct_15m DOUBLE PRECISION,
+    momentum_score DOUBLE PRECISION,
+    todvol_score DOUBLE PRECISION,
+    level_setup_score DOUBLE PRECISION,
+    news_score DOUBLE PRECISION,
+    gap_type TEXT,
+    iep_price DOUBLE PRECISION,
+    selected_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (date, symbol)
+);
+
+CREATE OR REPLACE VIEW v_signal_status AS
+SELECT s.id, s.symbol, s.strategy_id, s.mode, s.signal_type, s.entry_price,
+       s.sl_price, s.target_1, s.target_2, s.reward_risk, s.regime, s.rationale,
+       s.confidence_score, s.todvol_ratio, s.vwap_at_signal, s.atr_at_signal,
+       s.created_at, COALESCE(last_e.event_type, 'PENDING') AS current_status,
+       last_e.net_pnl_r, last_e.mfe_r, last_e.mae_r, last_e.price AS exit_price
+FROM intraday_signals s
+LEFT JOIN signal_events last_e ON last_e.id = (
+    SELECT id FROM signal_events WHERE signal_id = s.id
+    ORDER BY created_at DESC LIMIT 1
+);

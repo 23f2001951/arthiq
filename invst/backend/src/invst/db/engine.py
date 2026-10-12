@@ -94,6 +94,14 @@ def adapt_sql(sql: str) -> str:
     """Adapt SQLite-dialect SQL to PostgreSQL-compatible syntax."""
     s = sql.strip()
 
+    # PostgreSQL has CREATE OR REPLACE VIEW, but no CREATE VIEW IF NOT EXISTS.
+    s = re.sub(
+        r"\bCREATE\s+VIEW\s+IF\s+NOT\s+EXISTS\b",
+        "CREATE OR REPLACE VIEW",
+        s,
+        flags=re.IGNORECASE,
+    )
+
     # 0. Transform SQLite AUTOINCREMENT to Postgres SERIAL
     s = re.sub(
         r"\bINTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT\b",
@@ -479,11 +487,8 @@ def get_db_connection(
             return PostgresConnectionWrapper(raw_conn, connect_url=clean_url)
         except Exception as exc:
             clean_host = clean_url.split("@")[-1] if "@" in clean_url else "database"
-            logger.warning(
-                "Could not connect to PostgreSQL database (%s): %s. Gracefully falling back to local SQLite database.",
-                clean_host,
-                exc,
-            )
+            logger.exception("Could not connect to configured PostgreSQL database (%s).", clean_host)
+            raise RuntimeError("Configured PostgreSQL database is unavailable.") from exc
 
     # SQLite connection
     import sqlite3
